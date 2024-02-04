@@ -71,9 +71,9 @@ public class NaiveVoxelRenderer extends BasicRenderer {
     private float[] MVP;
     private float[] temp;
 
-    private float[] SR; // scaling and rotation
-    private float scalingFactor;
-    private float[] startNDC;
+    private float sideLengthOGL;
+    private float[] gridSizeOGL;
+    private float maxGridSizeOGL;
 
     /* start */
     private int[] voxelsRaw;
@@ -84,22 +84,20 @@ public class NaiveVoxelRenderer extends BasicRenderer {
     private int countFacesToElement;
 
     public NaiveVoxelRenderer() {
-        super();
+        super(0, 0, 0);
         drawMode = GL_TRIANGLES;
         viewM = new float[16];
         modelM = new float[16];
         projM = new float[16];
         MVP = new float[16];
         temp = new float[16];
-        SR = new float[16];
 
         Matrix.setIdentityM(viewM, 0);
         Matrix.setIdentityM(modelM, 0);
         Matrix.setIdentityM(projM, 0);
         Matrix.setIdentityM(MVP, 0);
-        Matrix.setIdentityM(SR, 0);
 
-
+        sideLengthOGL = 1.0f;
     }
 
     @Override
@@ -126,9 +124,9 @@ public class NaiveVoxelRenderer extends BasicRenderer {
         super.onSurfaceChanged(gl10, w, h);
         float aspect = ((float) w) / ((float) (h == 0 ? 1 : h));
 
-        Matrix.perspectiveM(projM, 0, 45f, aspect, 0.1f, 100f);
+        Matrix.perspectiveM(projM, 0, 45f, aspect, 0.1f, maxGridSizeOGL*10);
 
-        Matrix.setLookAtM(viewM, 0, 0, 0f, 10f,
+        Matrix.setLookAtM(viewM, 0, 0, 0f, maxGridSizeOGL*3,
                 0, 0, 0,
                 0, 1, 0);
     }
@@ -175,7 +173,7 @@ public class NaiveVoxelRenderer extends BasicRenderer {
         }
 
         /* Load .vly model */
-        int[] gridSize = null;
+        int[] gridSizeVLY = null;
 
         try {
             is = context.getAssets().open(VOXMODEL_FILENAME);
@@ -186,12 +184,16 @@ public class NaiveVoxelRenderer extends BasicRenderer {
 
             voxelsRaw = vo.getVoxelsRaw();
             paletteRaw = vo.getPaletteRaw();
-            gridSize = vo.getGridSize();
+            gridSizeVLY = vo.getGridSize();
         } catch (IOException | NumberFormatException e) {
             e.printStackTrace();
             Log.e(getClass().getSimpleName(), "Failed to load .vly model");
             System.exit(-1);
         }
+
+        /* Precompute things common for all voxels */
+        gridSizeOGL = new float[]{gridSizeVLY[0]*sideLengthOGL, gridSizeVLY[2]*sideLengthOGL, gridSizeVLY[1]*sideLengthOGL}; // swap axis -2 with -1
+        maxGridSizeOGL = Math.max(Math.max(gridSizeOGL[0], gridSizeOGL[1]), gridSizeOGL[2]);
 
         /* Resource allocation and initialization */
         FloatBuffer vertexData =
@@ -209,18 +211,6 @@ public class NaiveVoxelRenderer extends BasicRenderer {
         indexData.position(0);
 
         countFacesToElement = indices.length; // TODO: Why faces == indices.length?
-
-        /* Precompute scaling and rotation, common for all voxels */
-        float maxGridSize = Math.max(Math.max(gridSize[0], gridSize[1]), gridSize[2]);
-        scalingFactor = MAX_GRID_SIZE_NDC / maxGridSize; // assuming that the sides of the model are 1.0f long
-
-        // Matrix.translateM(modelM, 0, startNDC[0], startNDC[1], startNDC[2]);
-        Matrix.rotateM(SR, 0, -90, 1, 0, 0);
-        Matrix.scaleM(SR, 0, scalingFactor, scalingFactor, scalingFactor);
-
-        float[] gridSizeNDC = {gridSize[0]/scalingFactor, gridSize[1]/scalingFactor, gridSize[2]/scalingFactor};
-        float[] paddingNDC = {(MAX_GRID_SIZE_NDC-gridSizeNDC[0])/2f, (MAX_GRID_SIZE_NDC-gridSizeNDC[1])/2f, (MAX_GRID_SIZE_NDC-gridSizeNDC[2])/2f};
-        startNDC = new float[]{-MAX_GRID_SIZE_NDC/2 + paddingNDC[0], -MAX_GRID_SIZE_NDC/2 + paddingNDC[1], -MAX_GRID_SIZE_NDC/2 + paddingNDC[2]};
 
 
         VAO = new int[1]; // one VAO to bind both vpos and normals
@@ -262,19 +252,25 @@ public class NaiveVoxelRenderer extends BasicRenderer {
 
         Matrix.multiplyMM(temp, 0, projM, 0, viewM, 0);
 
-        Matrix.setIdentityM(modelM, 0);
-
         glUseProgram(shaderHandle);
         GLES30.glBindVertexArray(VAO[0]);
 
         for(int i = 0; i < voxelsRaw.length; i+=VlyObject.VOXEL_DATA_SIZE){
+            Matrix.setIdentityM(modelM, 0);
+
+            // sidelen and voxraw signs are equal, gridsize/2 opposite
+            Matrix.translateM(modelM, 0,
+                    gridSizeOGL[0]/2.0f - sideLengthOGL/2.0f,
+                    -gridSizeOGL[1]/2.0f + sideLengthOGL/2.0f,
+                    gridSizeOGL[2]/2.0f - sideLengthOGL/2.0f
+            );
+
             Matrix.translateM(modelM,
                     0,
-                    startNDC[0] + voxelsRaw[i] / scalingFactor,
-                    startNDC[1] + voxelsRaw[i+1] / scalingFactor,
-                    startNDC[2] + voxelsRaw[i+2] / scalingFactor
+                    -voxelsRaw[i]*sideLengthOGL,
+                    voxelsRaw[i+2]*sideLengthOGL, // since Z is the up axis in .vly
+                    -voxelsRaw[i+1]*sideLengthOGL
                     );
-            Matrix.multiplyMM(modelM, 0, modelM, 0, SR, 0);
 
             Matrix.multiplyMM(MVP, 0, temp, 0, modelM, 0);
 

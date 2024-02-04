@@ -46,9 +46,9 @@ public class VlyObject {
         return "VlyObject{" +
                 "gridSize=" + Arrays.toString(gridSize) +
                 ", voxelNum=" + voxelNum +
-                ", voxelsRaw=" + Arrays.toString(voxelsRaw) +
+                ", voxelsRaw=" + Arrays.toString(voxelsRaw).substring(0, 30) +
                 ", colorsNum=" + colorsNum +
-                ", paletteRaw=" + Arrays.toString(paletteRaw) +
+                ", paletteRaw=" + Arrays.toString(paletteRaw).substring(0, 30)  +
                 '}';
     }
 
