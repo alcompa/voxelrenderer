@@ -63,18 +63,30 @@ import androidx.core.view.GestureDetectorCompat;
 public class NaiveVoxelRenderer extends BasicRenderer {
     private static final String VSHAD_FILENAME = "vertex.glslv";
     private static final String FSHAD_FILENAME = "fragment.glslf";
-    private static final String VOXMODEL_FILENAME = "christmas.vly";
+    private static final String VOXMODEL_FILENAME = "monu2.vly";
 
     private int[] VAO;
     private int shaderHandle;
     private int MVPloc;
-    private int colorloc; // added
+    private int ucolor; // added
+    private int uModelM;
 
     private float[] viewM;
     private float[] modelM;
     private float[] projM;
     private float[] MVP;
     private float[] temp;
+    private float[] inverseModel;
+    private int uInverseModel;
+
+    private int drawMode;
+    private int countFacesToElement;
+
+    private float[] lightPos;
+    private int uLightPos;
+
+    private float[] eyePos;
+    private int uEyePos;
 
     private float sideLengthOGL;
     private float[] gridSizeOGL;
@@ -93,28 +105,28 @@ public class NaiveVoxelRenderer extends BasicRenderer {
     private GestureDetectorCompat gestureDetector;
     private boolean gestureDetected;
 
-
-    /* start */
     private int[] voxelsRaw;
     private float[] paletteRaw;
-    /* end */
-
-    private int drawMode;
-    private int countFacesToElement;
 
     public NaiveVoxelRenderer() {
         super(0, 0, 0);
+
+        lightPos = new float[]{-0.25f, 0.25f, 10.0f}; // TODO: check
+        eyePos = new float[]{0f,0f,10f}; // TODO: check
+
         drawMode = GL_TRIANGLES;
         viewM = new float[16];
         modelM = new float[16];
         projM = new float[16];
         MVP = new float[16];
         temp = new float[16];
+        inverseModel = new float[16];
 
-        Matrix.setIdentityM(viewM, 0);
         Matrix.setIdentityM(modelM, 0);
+        Matrix.setIdentityM(viewM, 0);
         Matrix.setIdentityM(projM, 0);
         Matrix.setIdentityM(MVP, 0);
+        Matrix.setIdentityM(inverseModel, 0);
 
         sideLengthOGL = 1.0f; // TODO: make it final
         angleY = 0.0f;
@@ -212,7 +224,6 @@ public class NaiveVoxelRenderer extends BasicRenderer {
         });
     }
 
-
     @Override
     public void onSurfaceChanged(GL10 gl10, int w, int h) {
         super.onSurfaceChanged(gl10, w, h);
@@ -220,10 +231,7 @@ public class NaiveVoxelRenderer extends BasicRenderer {
 
         Matrix.perspectiveM(projM, 0, 45f, aspect, 0.1f, 500f);
 
-        minEyeZ = maxGridSizeOGL;
-        maxEyeZ = maxGridSizeOGL * 3.0f;
-
-        Matrix.setLookAtM(viewM, 0, 0, 0f, maxEyeZ,
+        Matrix.setLookAtM(viewM, 0, eyePos[0], eyePos[1], eyePos[2],
                 0, 0, 0,
                 0, 1, 0);
     }
@@ -291,6 +299,9 @@ public class NaiveVoxelRenderer extends BasicRenderer {
         /* Precompute things common for all voxels */
         gridSizeOGL = new float[]{gridSizeVLY[0]*sideLengthOGL, gridSizeVLY[2]*sideLengthOGL, gridSizeVLY[1]*sideLengthOGL}; // swap axis -2 with -1
         maxGridSizeOGL = Math.max(Math.max(gridSizeOGL[0], gridSizeOGL[1]), gridSizeOGL[2]);
+        minEyeZ = maxGridSizeOGL;
+        maxEyeZ = maxGridSizeOGL * 3.0f;
+        eyePos = new float[]{0.0f, 0.0f, maxEyeZ};
 
         /* Resource allocation and initialization */
         FloatBuffer vertexData =
@@ -333,7 +344,17 @@ public class NaiveVoxelRenderer extends BasicRenderer {
         GLES30.glBindVertexArray(0);
 
         MVPloc = glGetUniformLocation(shaderHandle, "MVP");
-        colorloc = glGetUniformLocation(shaderHandle, "color");
+        ucolor = glGetUniformLocation(shaderHandle, "color");
+        uModelM = glGetUniformLocation(shaderHandle, "modelMatrix");
+        uInverseModel = glGetUniformLocation(shaderHandle, "inverseModel");
+        uLightPos = glGetUniformLocation(shaderHandle,"lightPos");
+        uEyePos = glGetUniformLocation(shaderHandle,"eyePos");
+
+        /* Pre load uniform values */
+        glUseProgram(shaderHandle);
+        glUniform3fv(uLightPos,1,lightPos,0);
+        glUniform3fv(uEyePos,1,eyePos,0);
+        glUseProgram(0);
 
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LEQUAL);
@@ -351,13 +372,14 @@ public class NaiveVoxelRenderer extends BasicRenderer {
         GLES30.glBindVertexArray(VAO[0]);
 
         for(int i = 0; i < voxelsRaw.length; i+=VlyObject.VOXEL_DATA_SIZE){
-            Matrix.setIdentityM(modelM, 0);
-
+            /* Compute VP part of MVP */
             Matrix.setLookAtM(viewM, 0, 0, 0f, minEyeZ + (maxEyeZ-minEyeZ) * (maxZoom-zoom) / (maxZoom-minZoom),
                     0, 0, 0,
                     0, 1, 0);
             Matrix.multiplyMM(temp, 0, projM, 0, viewM, 0);
 
+            /* Compute model matrix */
+            Matrix.setIdentityM(modelM, 0);
             Matrix.rotateM(modelM, 0, angleY, 0.0f, 1.0f, 0.0f);
 
             // sidelen and voxraw signs are equal, gridsize/2 opposite
@@ -374,13 +396,20 @@ public class NaiveVoxelRenderer extends BasicRenderer {
                     -voxelsRaw[i+1]*sideLengthOGL
                     );
 
-            Matrix.multiplyMM(MVP, 0, temp, 0, modelM, 0);
+            /* Send model matrix */
+            glUniformMatrix4fv(uModelM,1,false, modelM,0);
 
+            /* Compute and send MVP */
+            Matrix.multiplyMM(MVP, 0, temp, 0, modelM, 0);
             glUniformMatrix4fv(MVPloc, 1, false, MVP, 0);
+
+            /* Compute and send T(M^-1) */
+            Matrix.invertM(inverseModel, 0,modelM,0);
+            glUniformMatrix4fv(uInverseModel,1,true, inverseModel,0); // transpose while send
 
             int paletteIdx = voxelsRaw[i + VlyObject.VOXEL_DATA_SIZE - 1];
             glUniform3f(
-                    colorloc,
+                    ucolor,
                     paletteRaw[paletteIdx * VlyObject.COLOR_DATA_SIZE],
                     paletteRaw[paletteIdx * VlyObject.COLOR_DATA_SIZE + 1],
                     paletteRaw[paletteIdx * VlyObject.COLOR_DATA_SIZE + 2]
