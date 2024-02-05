@@ -28,6 +28,7 @@ import com.alcompa.voxelrenderer.utils.ShaderCompiler;
 import com.alcompa.voxelrenderer.utils.VlyObject;
 
 import static android.opengl.GLES10.GL_CCW;
+import static android.opengl.GLES20.GL_LINE_LOOP;
 import static android.opengl.GLES20.glFrontFace;
 import static android.opengl.GLES20.GL_ARRAY_BUFFER;
 import static android.opengl.GLES20.GL_BACK;
@@ -62,7 +63,7 @@ import androidx.core.view.GestureDetectorCompat;
 public class NaiveVoxelRenderer extends BasicRenderer {
     private static final String VSHAD_FILENAME = "vertex.glslv";
     private static final String FSHAD_FILENAME = "fragment.glslf";
-    private static final String VOXMODEL_FILENAME = "chrk.vly";
+    private static final String VOXMODEL_FILENAME = "christmas.vly";
 
     private int[] VAO;
     private int shaderHandle;
@@ -77,16 +78,21 @@ public class NaiveVoxelRenderer extends BasicRenderer {
 
     private float sideLengthOGL;
     private float[] gridSizeOGL;
-    private float maxGridSizeOGL; // TODO: can be local variable (zNear and zFar)
+    private float maxGridSizeOGL;
+
     private float angleY;
     private float angleIncrement;
 
-    private ScaleGestureDetector scaleDetector;
-    private GestureDetectorCompat gestureDetector;
     private float minZoom;
     private float maxZoom;
     private float zoom;
-    private float aspect;
+    private float minEyeZ;
+    private float maxEyeZ;
+
+    private ScaleGestureDetector scaleDetector;
+    private GestureDetectorCompat gestureDetector;
+    private boolean gestureDetected;
+
 
     /* start */
     private int[] voxelsRaw;
@@ -110,13 +116,17 @@ public class NaiveVoxelRenderer extends BasicRenderer {
         Matrix.setIdentityM(projM, 0);
         Matrix.setIdentityM(MVP, 0);
 
-        sideLengthOGL = 1.0f;
+        sideLengthOGL = 1.0f; // TODO: make it final
         angleY = 0.0f;
         angleIncrement = 5.0f;
-        minZoom = 0.1f; // TODO: check
-        maxZoom = 10.0f; // TODO: check
+
+        minZoom = 1.0f; // TODO: check
+        maxZoom = 5.0f; // TODO: check
         zoom = 1.0f;
-        aspect = 1.0f; // TODO: cannot be computed now
+        minEyeZ = 0.0f; // TODO: cannot be computed now
+        maxEyeZ = 10.0f; // TODO: cannot be computed now
+
+        gestureDetected = false;
     }
 
     @Override
@@ -124,24 +134,26 @@ public class NaiveVoxelRenderer extends BasicRenderer {
     public void setContextAndSurface(Context context, GLSurfaceView surface) {
         super.setContextAndSurface(context, surface);
 
-
         scaleDetector = new ScaleGestureDetector(context, new ScaleGestureDetector.SimpleOnScaleGestureListener(){
             @Override
             public boolean onScale(ScaleGestureDetector detector){
+                gestureDetected = true;
+
                 zoom *= detector.getScaleFactor();
 
                 // Don't let the object get too small or too large.
                 zoom = Math.max(minZoom, Math.min(zoom, maxZoom));
-
                 Log.v(TAG, "ScaleGesture: zoom set on " + Float.toString(zoom));
-
                 surface.invalidate(); // TODO: check if it calls onSurfaceCreated/Changed
                 return true;
             }
         });
+
         gestureDetector = new GestureDetectorCompat(context, new GestureDetector.SimpleOnGestureListener(){
             @Override
             public boolean onScroll(MotionEvent event1, MotionEvent event2, float distanceX, float distanceY){
+                gestureDetected = true;
+
                 if(distanceX > 0){
                     Log.v(TAG, "Scroll gesture: swipe left");
                     angleY -= angleIncrement;
@@ -150,6 +162,17 @@ public class NaiveVoxelRenderer extends BasicRenderer {
                     angleY += angleIncrement;
                 }
                 return true;
+            }
+
+            @Override
+            public void onLongPress(MotionEvent event){
+                gestureDetected = true;
+
+                if (drawMode == GL_TRIANGLES)
+                    drawMode = GL_LINE_LOOP;
+                else drawMode = GL_TRIANGLES;
+
+                Log.v("TAG", "Drawing " + (drawMode == GL_TRIANGLES ? "Triangles" : "Lines"));
             }
         });
 
@@ -160,86 +183,47 @@ public class NaiveVoxelRenderer extends BasicRenderer {
                 scaleDetector.onTouchEvent(event);
                 gestureDetector.onTouchEvent(event);
 
-                // Handle simple gestures
-                WindowManager wm = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
-                Display display = wm.getDefaultDisplay(); // TODO: consider also view.getDisplay();
-                Point size = new Point();
-                display.getSize(size);
-                int screenWidth = size.x;
-
-                Log.v(TAG, "Display size: " + size.toString());
-
                 int action = event.getActionMasked();
 
-                if (action == MotionEvent.ACTION_DOWN) {
-                    if (event.getX() < screenWidth / 2.0f){
-                        Log.v(TAG, "Touch left");
-                        angleY -= angleIncrement;
+                if (action == MotionEvent.ACTION_UP){
+                    if(gestureDetected) {
+                        gestureDetected = false;
                     } else {
-                        Log.v(TAG, "Touch right");
-                        angleY += angleIncrement;
-                    }
-                }
+                        WindowManager wm = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
+                        Display display = wm.getDefaultDisplay(); // TODO: consider also view.getDisplay();
+                        Point size = new Point();
+                        display.getSize(size);
+                        int screenWidth = size.x;
 
-                return true;
-            }
-        });
+                        Log.v(TAG, "Display size: " + size.toString());
 
-        /*
-        // TODO: remove or change
-        this.surface.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                if (drawMode == GL_TRIANGLES)
-                    drawMode = GL_LINE_LOOP;
-                else drawMode = GL_TRIANGLES;
-
-                Log.v("TAG", "Drawing " + (drawMode == GL_TRIANGLES ? "Triangles" : "Lines"));
-
-            }
-        });
-
-        this.surface.setOnTouchListener(new View.OnTouchListener(){
-            @Override
-            public boolean onTouch(View view, MotionEvent motionEvent) {
-                WindowManager wm = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
-                Display display = wm.getDefaultDisplay(); // TODO: consider also view.getDisplay();
-                Point size = new Point();
-                display.getSize(size);
-                int screenWidth = size.x;
-
-                Log.v(TAG, "Display size: " + size.toString());
-
-                int action = motionEvent.getActionMasked();
-
-                switch (action){
-                    case MotionEvent.ACTION_DOWN:
-                        if (motionEvent.getX() < screenWidth / 2.0f){
+                        if (event.getX() < screenWidth / 2.0f) {
                             Log.v(TAG, "Touch left");
                             angleY -= angleIncrement;
                         } else {
                             Log.v(TAG, "Touch right");
                             angleY += angleIncrement;
                         }
-                        break;
+                    }
                 }
 
                 return true;
             }
         });
-        */
-
     }
 
 
     @Override
     public void onSurfaceChanged(GL10 gl10, int w, int h) {
         super.onSurfaceChanged(gl10, w, h);
-        aspect = ((float) w) / ((float) (h == 0 ? 1 : h));
+        float aspect = ((float) w) / ((float) (h == 0 ? 1 : h));
 
-        Matrix.perspectiveM(projM, 0, 45f, aspect, 0.1f, maxGridSizeOGL / 2.0f + 10.0f);
+        Matrix.perspectiveM(projM, 0, 45f, aspect, 0.1f, 500f);
 
-        Matrix.setLookAtM(viewM, 0, 0, 0f, maxGridSizeOGL / 2.0f + 10.0f,
+        minEyeZ = maxGridSizeOGL;
+        maxEyeZ = maxGridSizeOGL * 3.0f;
+
+        Matrix.setLookAtM(viewM, 0, 0, 0f, maxEyeZ,
                 0, 0, 0,
                 0, 1, 0);
     }
@@ -369,7 +353,9 @@ public class NaiveVoxelRenderer extends BasicRenderer {
         for(int i = 0; i < voxelsRaw.length; i+=VlyObject.VOXEL_DATA_SIZE){
             Matrix.setIdentityM(modelM, 0);
 
-            Matrix.perspectiveM(projM, 0, 45.0f / zoom, aspect, 0.1f, maxGridSizeOGL / 2.0f + 10.0f);
+            Matrix.setLookAtM(viewM, 0, 0, 0f, minEyeZ + (maxEyeZ-minEyeZ) * (maxZoom-zoom) / (maxZoom-minZoom),
+                    0, 0, 0,
+                    0, 1, 0);
             Matrix.multiplyMM(temp, 0, projM, 0, viewM, 0);
 
             Matrix.rotateM(modelM, 0, angleY, 0.0f, 1.0f, 0.0f);
