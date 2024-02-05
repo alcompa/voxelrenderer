@@ -63,7 +63,7 @@ import androidx.core.view.GestureDetectorCompat;
 public class NaiveVoxelRenderer extends BasicRenderer {
     private static final String VSHAD_FILENAME = "vertex.glslv";
     private static final String FSHAD_FILENAME = "fragment.glslf";
-    private static final String VOXMODEL_FILENAME = "monu2.vly";
+    private static final String VOXMODEL_FILENAME = "dragon.vly";
 
     private int[] VAO;
     private int shaderHandle;
@@ -93,7 +93,8 @@ public class NaiveVoxelRenderer extends BasicRenderer {
     private float maxGridSizeOGL;
 
     private float angleY;
-    private float angleIncrement;
+    private float slowAngleIncrement;
+    private float fastAngleIncrement;
 
     private float minZoom;
     private float maxZoom;
@@ -130,7 +131,8 @@ public class NaiveVoxelRenderer extends BasicRenderer {
 
         sideLengthOGL = 1.0f; // TODO: make it final
         angleY = 0.0f;
-        angleIncrement = 5.0f;
+        slowAngleIncrement = 0.5f;
+        fastAngleIncrement = 5.0f;
 
         minZoom = 1.0f; // TODO: check
         maxZoom = 5.0f; // TODO: check
@@ -168,10 +170,10 @@ public class NaiveVoxelRenderer extends BasicRenderer {
 
                 if(distanceX > 0){
                     Log.v(TAG, "Scroll gesture: swipe left");
-                    angleY -= angleIncrement;
+                    angleY -= slowAngleIncrement;
                 } else {
                     Log.v(TAG, "Scroll gesture: swipe right");
-                    angleY += angleIncrement;
+                    angleY += slowAngleIncrement;
                 }
                 return true;
             }
@@ -211,10 +213,10 @@ public class NaiveVoxelRenderer extends BasicRenderer {
 
                         if (event.getX() < screenWidth / 2.0f) {
                             Log.v(TAG, "Touch left");
-                            angleY -= angleIncrement;
+                            angleY -= fastAngleIncrement;
                         } else {
                             Log.v(TAG, "Touch right");
-                            angleY += angleIncrement;
+                            angleY += fastAngleIncrement;
                         }
                     }
                 }
@@ -302,6 +304,7 @@ public class NaiveVoxelRenderer extends BasicRenderer {
         minEyeZ = maxGridSizeOGL;
         maxEyeZ = maxGridSizeOGL * 3.0f;
         eyePos = new float[]{0.0f, 0.0f, maxEyeZ};
+        lightPos = new float[]{0.0f, maxGridSizeOGL, maxEyeZ};
 
         /* Resource allocation and initialization */
         FloatBuffer vertexData =
