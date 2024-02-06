@@ -1,9 +1,12 @@
 package com.alcompa.voxelrenderer;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.graphics.Point;
 import android.opengl.GLES30;
 import android.opengl.GLSurfaceView;
+import android.opengl.GLUtils;
 import android.opengl.Matrix;
 import android.util.Log;
 import android.view.Display;
@@ -29,6 +32,16 @@ import com.alcompa.voxelrenderer.utils.VlyObject;
 
 import static android.opengl.GLES10.GL_CCW;
 import static android.opengl.GLES20.GL_LINE_LOOP;
+import static android.opengl.GLES20.GL_NEAREST;
+import static android.opengl.GLES20.GL_REPEAT;
+import static android.opengl.GLES20.GL_TEXTURE0;
+import static android.opengl.GLES20.GL_TEXTURE_2D;
+import static android.opengl.GLES20.GL_TEXTURE_MAG_FILTER;
+import static android.opengl.GLES20.GL_TEXTURE_MIN_FILTER;
+import static android.opengl.GLES20.GL_TEXTURE_WRAP_S;
+import static android.opengl.GLES20.GL_TEXTURE_WRAP_T;
+import static android.opengl.GLES20.glActiveTexture;
+import static android.opengl.GLES20.glBindTexture;
 import static android.opengl.GLES20.glFrontFace;
 import static android.opengl.GLES20.GL_ARRAY_BUFFER;
 import static android.opengl.GLES20.GL_BACK;
@@ -51,33 +64,47 @@ import static android.opengl.GLES20.glDrawElements;
 import static android.opengl.GLES20.glEnable;
 import static android.opengl.GLES20.glEnableVertexAttribArray;
 import static android.opengl.GLES20.glGenBuffers;
+import static android.opengl.GLES20.glGenTextures;
 import static android.opengl.GLES20.glGetUniformLocation;
-import static android.opengl.GLES20.glUniform3f;
+import static android.opengl.GLES20.glTexParameteri;
+import static android.opengl.GLES20.glUniform1i;
+import static android.opengl.GLES20.glUniform2f;
+import static android.opengl.GLES20.glUniform2fv;
+import static android.opengl.GLES20.glUniform2i;
 import static android.opengl.GLES20.glUniform3fv;
 import static android.opengl.GLES20.glUniformMatrix4fv;
 import static android.opengl.GLES20.glUseProgram;
 import static android.opengl.GLES20.glVertexAttribPointer;
 
+import androidx.annotation.ColorInt;
 import androidx.core.view.GestureDetectorCompat;
+
+/* debugging */
+import java.io.FileOutputStream;
+import java.io.File;
+import java.util.Arrays;
 
 public class NaiveVoxelRenderer extends BasicRenderer {
     private static final String VSHAD_FILENAME = "vertex.glslv";
     private static final String FSHAD_FILENAME = "fragment.glslf";
     private static final String VOXMODEL_FILENAME = "dragon.vly";
 
-    private int[] VAO;
     private int shaderHandle;
-    private int MVPloc;
-    private int ucolor; // added
-    private int uModelM;
+    private int[] VAO;
+    private int[] texObjId;
+    private int uTexUnit;
+    private int uTexCoord;
 
-    private float[] viewM;
     private float[] modelM;
+    private float[] viewM;
     private float[] projM;
     private float[] MVP;
     private float[] temp;
     private float[] inverseModel;
+
+    private int uModelM;
     private int uInverseModel;
+    private int MVPloc;
 
     private int drawMode;
     private int countFacesToElement;
@@ -106,14 +133,14 @@ public class NaiveVoxelRenderer extends BasicRenderer {
     private GestureDetectorCompat gestureDetector;
     private boolean gestureDetected;
 
-    private int[] voxelsRaw;
-    private float[] paletteRaw;
+    private int[] voxelsRaw; // TODO: make local variables in onSurfaceCreated
+    private int paletteBitmapSide;
 
     public NaiveVoxelRenderer() {
         super(0, 0, 0);
 
         lightPos = new float[]{-0.25f, 0.25f, 10.0f}; // TODO: check
-        eyePos = new float[]{0f,0f,10f}; // TODO: check
+        eyePos = new float[]{0f, 0f, 10f}; // TODO: check
 
         drawMode = GL_TRIANGLES;
         viewM = new float[16];
@@ -141,6 +168,8 @@ public class NaiveVoxelRenderer extends BasicRenderer {
         maxEyeZ = 10.0f; // TODO: cannot be computed now
 
         gestureDetected = false;
+
+        paletteBitmapSide = 16; // TODO: cannot be computed here
     }
 
     @Override
@@ -148,9 +177,9 @@ public class NaiveVoxelRenderer extends BasicRenderer {
     public void setContextAndSurface(Context context, GLSurfaceView surface) {
         super.setContextAndSurface(context, surface);
 
-        scaleDetector = new ScaleGestureDetector(context, new ScaleGestureDetector.SimpleOnScaleGestureListener(){
+        scaleDetector = new ScaleGestureDetector(context, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
             @Override
-            public boolean onScale(ScaleGestureDetector detector){
+            public boolean onScale(ScaleGestureDetector detector) {
                 gestureDetected = true;
 
                 zoom *= detector.getScaleFactor();
@@ -163,12 +192,12 @@ public class NaiveVoxelRenderer extends BasicRenderer {
             }
         });
 
-        gestureDetector = new GestureDetectorCompat(context, new GestureDetector.SimpleOnGestureListener(){
+        gestureDetector = new GestureDetectorCompat(context, new GestureDetector.SimpleOnGestureListener() {
             @Override
-            public boolean onScroll(MotionEvent event1, MotionEvent event2, float distanceX, float distanceY){
+            public boolean onScroll(MotionEvent event1, MotionEvent event2, float distanceX, float distanceY) {
                 gestureDetected = true;
 
-                if(distanceX > 0){
+                if (distanceX > 0) {
                     Log.v(TAG, "Scroll gesture: swipe left");
                     angleY -= slowAngleIncrement;
                 } else {
@@ -179,7 +208,7 @@ public class NaiveVoxelRenderer extends BasicRenderer {
             }
 
             @Override
-            public void onLongPress(MotionEvent event){
+            public void onLongPress(MotionEvent event) {
                 gestureDetected = true;
 
                 if (drawMode == GL_TRIANGLES)
@@ -199,8 +228,8 @@ public class NaiveVoxelRenderer extends BasicRenderer {
 
                 int action = event.getActionMasked();
 
-                if (action == MotionEvent.ACTION_UP){
-                    if(gestureDetected) {
+                if (action == MotionEvent.ACTION_UP) {
+                    if (gestureDetected) {
                         gestureDetected = false;
                     } else {
                         WindowManager wm = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
@@ -281,6 +310,7 @@ public class NaiveVoxelRenderer extends BasicRenderer {
 
         /* Load .vly model */
         int[] gridSizeVLY = null;
+        int[] paletteRaw = null;
 
         try {
             is = context.getAssets().open(VOXMODEL_FILENAME);
@@ -299,7 +329,7 @@ public class NaiveVoxelRenderer extends BasicRenderer {
         }
 
         /* Precompute things common for all voxels */
-        gridSizeOGL = new float[]{gridSizeVLY[0]*sideLengthOGL, gridSizeVLY[2]*sideLengthOGL, gridSizeVLY[1]*sideLengthOGL}; // swap axis -2 with -1
+        gridSizeOGL = new float[]{gridSizeVLY[0] * sideLengthOGL, gridSizeVLY[2] * sideLengthOGL, gridSizeVLY[1] * sideLengthOGL}; // swap axis -2 with -1
         maxGridSizeOGL = Math.max(Math.max(gridSizeOGL[0], gridSizeOGL[1]), gridSizeOGL[2]);
         minEyeZ = maxGridSizeOGL;
         maxEyeZ = maxGridSizeOGL * 3.0f;
@@ -309,8 +339,8 @@ public class NaiveVoxelRenderer extends BasicRenderer {
         /* Resource allocation and initialization */
         FloatBuffer vertexData =
                 ByteBuffer.allocateDirect(vertices.length * Float.BYTES)
-                .order(ByteOrder.nativeOrder())
-                .asFloatBuffer();
+                        .order(ByteOrder.nativeOrder())
+                        .asFloatBuffer();
         vertexData.put(vertices);
         vertexData.position(0);
 
@@ -347,16 +377,15 @@ public class NaiveVoxelRenderer extends BasicRenderer {
         GLES30.glBindVertexArray(0);
 
         MVPloc = glGetUniformLocation(shaderHandle, "MVP");
-        ucolor = glGetUniformLocation(shaderHandle, "color");
         uModelM = glGetUniformLocation(shaderHandle, "modelMatrix");
         uInverseModel = glGetUniformLocation(shaderHandle, "inverseModel");
-        uLightPos = glGetUniformLocation(shaderHandle,"lightPos");
-        uEyePos = glGetUniformLocation(shaderHandle,"eyePos");
+        uLightPos = glGetUniformLocation(shaderHandle, "lightPos");
+        uEyePos = glGetUniformLocation(shaderHandle, "eyePos");
 
         /* Pre load uniform values */
         glUseProgram(shaderHandle);
-        glUniform3fv(uLightPos,1,lightPos,0);
-        glUniform3fv(uEyePos,1,eyePos,0);
+        glUniform3fv(uLightPos, 1, lightPos, 0);
+        glUniform3fv(uEyePos, 1, eyePos, 0);
         glUseProgram(0);
 
         glEnable(GL_DEPTH_TEST);
@@ -365,18 +394,68 @@ public class NaiveVoxelRenderer extends BasicRenderer {
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
         glFrontFace(GL_CCW);
+
+        /* Create a bitmap for palette */
+        int numColors = paletteRaw.length / 3;
+        int y = (int) Math.ceil(Math.log(numColors) / Math.log(2) / 2.0); // TODO: use more efficient math
+        paletteBitmapSide = (int) Math.pow(2, y);
+
+        @ColorInt int[] encodedColors = new int[paletteBitmapSide * paletteBitmapSide];
+        for (int i = 0; i < numColors; i++) {
+            encodedColors[i] = Color.rgb(
+                paletteRaw[i * VlyObject.COLOR_DATA_SIZE],
+                paletteRaw[i * VlyObject.COLOR_DATA_SIZE + 1],
+                paletteRaw[i * VlyObject.COLOR_DATA_SIZE + 2]
+            );
+        }
+
+        Bitmap paletteBitmap = Bitmap.createBitmap(encodedColors, paletteBitmapSide, paletteBitmapSide, Bitmap.Config.ARGB_8888);
+
+        Log.v(TAG,"bitmap of size " + paletteBitmap.getWidth()+"x"+paletteBitmap.getHeight()+ " loaded " +
+                "with format " + paletteBitmap.getConfig().name());
+
+        texObjId = new int[1];
+        glGenTextures(1, texObjId, 0); // texture object creaction
+        glBindTexture(GL_TEXTURE_2D, texObjId[0]); // binding
+        // these two are mandatory also with texelFetch !!!
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        // related to “texObjId[0]”, what happens if we go over the S and T dimension?
+        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        GLUtils.texImage2D(GL_TEXTURE_2D, 0, paletteBitmap,0); // transfer host data to device memory
+        glBindTexture(GL_TEXTURE_2D, 0); // unbinding
+
+        uTexUnit = glGetUniformLocation(shaderHandle, "tex");
+        uTexCoord = glGetUniformLocation(shaderHandle, "texCoord");
+
+        /* Pre load uniforms values */
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texObjId[0]);
+        glUseProgram(shaderHandle);
+        // bind image pointed by texObjId[0] to the sampler object (that has location uTexUnit)
+        glUniform1i(uTexUnit, 0); // 0 because active texture is GL_TEXTURE0
+        glUseProgram(0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        paletteBitmap.recycle();
     }
 
     @Override
     public void onDrawFrame(GL10 gl10) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texObjId[0]);
+
         glUseProgram(shaderHandle);
         GLES30.glBindVertexArray(VAO[0]);
 
-        for(int i = 0; i < voxelsRaw.length; i+=VlyObject.VOXEL_DATA_SIZE){
+        for (int i = 0; i < voxelsRaw.length; i += VlyObject.VOXEL_DATA_SIZE) {
+            // TODO: should update eye pos uniform ?!
+
             /* Compute VP part of MVP */
-            Matrix.setLookAtM(viewM, 0, 0, 0f, minEyeZ + (maxEyeZ-minEyeZ) * (maxZoom-zoom) / (maxZoom-minZoom),
+            Matrix.setLookAtM(viewM, 0, 0, 0f, minEyeZ + (maxEyeZ - minEyeZ) * (maxZoom - zoom) / (maxZoom - minZoom),
                     0, 0, 0,
                     0, 1, 0);
             Matrix.multiplyMM(temp, 0, projM, 0, viewM, 0);
@@ -387,35 +466,38 @@ public class NaiveVoxelRenderer extends BasicRenderer {
 
             // sidelen and voxraw signs are equal, gridsize/2 opposite
             Matrix.translateM(modelM, 0,
-                    gridSizeOGL[0]/2.0f - sideLengthOGL/2.0f,
-                    -gridSizeOGL[1]/2.0f + sideLengthOGL/2.0f,
-                    gridSizeOGL[2]/2.0f - sideLengthOGL/2.0f
+                    gridSizeOGL[0] / 2.0f - sideLengthOGL / 2.0f,
+                    -gridSizeOGL[1] / 2.0f + sideLengthOGL / 2.0f,
+                    gridSizeOGL[2] / 2.0f - sideLengthOGL / 2.0f
             );
 
             Matrix.translateM(modelM,
                     0,
-                    -voxelsRaw[i]*sideLengthOGL,
-                    voxelsRaw[i+2]*sideLengthOGL, // since Z is the up axis in .vly
-                    -voxelsRaw[i+1]*sideLengthOGL
-                    );
+                    -voxelsRaw[i] * sideLengthOGL,
+                    voxelsRaw[i + 2] * sideLengthOGL, // since Z is the up axis in .vly
+                    -voxelsRaw[i + 1] * sideLengthOGL
+            );
 
             /* Send model matrix */
-            glUniformMatrix4fv(uModelM,1,false, modelM,0);
+            glUniformMatrix4fv(uModelM, 1, false, modelM, 0);
 
             /* Compute and send MVP */
             Matrix.multiplyMM(MVP, 0, temp, 0, modelM, 0);
             glUniformMatrix4fv(MVPloc, 1, false, MVP, 0);
 
             /* Compute and send T(M^-1) */
-            Matrix.invertM(inverseModel, 0,modelM,0);
-            glUniformMatrix4fv(uInverseModel,1,true, inverseModel,0); // transpose while send
+            Matrix.invertM(inverseModel, 0, modelM, 0);
+            glUniformMatrix4fv(uInverseModel, 1, true, inverseModel, 0); // transpose while send
 
+            /* Retrieve color from palette */
             int paletteIdx = voxelsRaw[i + VlyObject.VOXEL_DATA_SIZE - 1];
-            glUniform3f(
-                    ucolor,
-                    paletteRaw[paletteIdx * VlyObject.COLOR_DATA_SIZE],
-                    paletteRaw[paletteIdx * VlyObject.COLOR_DATA_SIZE + 1],
-                    paletteRaw[paletteIdx * VlyObject.COLOR_DATA_SIZE + 2]
+
+            // texture() coordinates starts bottom-left and are normalized in [0, 1]
+            // texelFetch() coordinates starts top-left and are in [0, sideSize]
+            glUniform2i(
+                uTexCoord,
+                paletteIdx % paletteBitmapSide,
+                paletteIdx / paletteBitmapSide
             );
 
             glDrawElements(drawMode, countFacesToElement, GL_UNSIGNED_INT, 0);

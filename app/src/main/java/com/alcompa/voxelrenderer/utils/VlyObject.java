@@ -18,7 +18,7 @@ public class VlyObject {
     private int voxelNum;
     private int[] voxelsRaw;
     private int colorsNum;
-    private float[] paletteRaw;
+    private int[] paletteRaw;
     private InputStream is;
 
     public static final int VOXEL_DATA_SIZE = 4;
@@ -37,7 +37,7 @@ public class VlyObject {
         return voxelsRaw;
     }
 
-    public float[] getPaletteRaw() {
+    public int[] getPaletteRaw() {
         return paletteRaw;
     }
 
@@ -103,13 +103,13 @@ public class VlyObject {
 
         colorsNum++; // since Ci starts with 0
 
-        paletteRaw = new float[colorsNum * COLOR_DATA_SIZE];
+        paletteRaw = new int[colorsNum * COLOR_DATA_SIZE];
 
         for (int i = 0; i < colorsNum; i++){
             s = reader.readLine();
             tokens = s.split(" ");
             for (int j = 0; j < COLOR_DATA_SIZE; j++){
-                paletteRaw[i*COLOR_DATA_SIZE+j] = Integer.parseInt(tokens[j+1].trim()) / 255.0f; // skip token 0 since Ci is a sequential number
+                paletteRaw[i*COLOR_DATA_SIZE+j] = Integer.parseInt(tokens[j+1].trim()); // skip token 0 since Ci is a sequential number
             }
         }
 
