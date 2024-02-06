@@ -87,7 +87,7 @@ import java.util.Arrays;
 public class NaiveVoxelRenderer extends BasicRenderer {
     private static final String VSHAD_FILENAME = "vertex.glslv";
     private static final String FSHAD_FILENAME = "fragment.glslf";
-    private static final String VOXMODEL_FILENAME = "dragon.vly";
+    private static final String VOXMODEL_FILENAME = "chrk.vly";
 
     private int shaderHandle;
     private int[] VAO;
@@ -183,11 +183,11 @@ public class NaiveVoxelRenderer extends BasicRenderer {
                 gestureDetected = true;
 
                 zoom *= detector.getScaleFactor();
-
                 // Don't let the object get too small or too large.
                 zoom = Math.max(minZoom, Math.min(zoom, maxZoom));
-                Log.v(TAG, "ScaleGesture: zoom set on " + Float.toString(zoom));
+                Log.v(TAG, "[onScale]: zoom set to " + Float.toString(zoom));
                 surface.invalidate(); // TODO: check if it calls onSurfaceCreated/Changed
+
                 return true;
             }
         });
@@ -198,10 +198,10 @@ public class NaiveVoxelRenderer extends BasicRenderer {
                 gestureDetected = true;
 
                 if (distanceX > 0) {
-                    Log.v(TAG, "Scroll gesture: swipe left");
+                    Log.v(TAG, "[onScroll]: swipe left");
                     angleY -= slowAngleIncrement;
                 } else {
-                    Log.v(TAG, "Scroll gesture: swipe right");
+                    Log.v(TAG, "[onScroll]: swipe right");
                     angleY += slowAngleIncrement;
                 }
                 return true;
@@ -215,7 +215,7 @@ public class NaiveVoxelRenderer extends BasicRenderer {
                     drawMode = GL_LINE_LOOP;
                 else drawMode = GL_TRIANGLES;
 
-                Log.v("TAG", "Drawing " + (drawMode == GL_TRIANGLES ? "Triangles" : "Lines"));
+                Log.v(TAG, "[onLongPress]: Drawing " + (drawMode == GL_TRIANGLES ? "Triangles" : "Lines"));
             }
         });
 
@@ -238,13 +238,13 @@ public class NaiveVoxelRenderer extends BasicRenderer {
                         display.getSize(size);
                         int screenWidth = size.x;
 
-                        Log.v(TAG, "Display size: " + size.toString());
+                        Log.v(TAG, "[onTouch]: Display size: " + size.toString());
 
                         if (event.getX() < screenWidth / 2.0f) {
-                            Log.v(TAG, "Touch left");
+                            Log.v(TAG, "[onTouch]: Touch left");
                             angleY -= fastAngleIncrement;
                         } else {
-                            Log.v(TAG, "Touch right");
+                            Log.v(TAG, "[onTouch]: Touch right");
                             angleY += fastAngleIncrement;
                         }
                     }
@@ -259,6 +259,8 @@ public class NaiveVoxelRenderer extends BasicRenderer {
     public void onSurfaceChanged(GL10 gl10, int w, int h) {
         super.onSurfaceChanged(gl10, w, h);
         float aspect = ((float) w) / ((float) (h == 0 ? 1 : h));
+
+        Log.v(TAG, "[onSurfaceChanged]: Aspect ratio: " + Float.toString(aspect));
 
         Matrix.perspectiveM(projM, 0, 45f, aspect, 0.1f, 500f);
 
@@ -298,13 +300,13 @@ public class NaiveVoxelRenderer extends BasicRenderer {
             PlyObject po = new PlyObject(is);
             po.parse();
 
-            Log.v(getClass().getSimpleName(), po.toString());
+            Log.v(TAG, po.toString());
 
             vertices = po.getVertices();
             indices = po.getIndices();
         } catch (IOException | NumberFormatException e) {
             e.printStackTrace();
-            Log.e(getClass().getSimpleName(), "Failed to load .ply model");
+            Log.e(TAG, "Failed to load .ply model");
             System.exit(-1);
         }
 
@@ -317,21 +319,29 @@ public class NaiveVoxelRenderer extends BasicRenderer {
             VlyObject vo = new VlyObject(is);
             vo.parse();
 
-            Log.v(getClass().getSimpleName(), vo.toString());
+            Log.v(TAG, vo.toString());
 
             voxelsRaw = vo.getVoxelsRaw();
             paletteRaw = vo.getPaletteRaw();
             gridSizeVLY = vo.getGridSize();
         } catch (IOException | NumberFormatException e) {
             e.printStackTrace();
-            Log.e(getClass().getSimpleName(), "Failed to load .vly model");
+            Log.e(TAG, "Failed to load .vly model");
             System.exit(-1);
         }
 
-        /* Precompute things common for all voxels */
-        gridSizeOGL = new float[]{gridSizeVLY[0] * sideLengthOGL, gridSizeVLY[2] * sideLengthOGL, gridSizeVLY[1] * sideLengthOGL}; // swap axis -2 with -1
+        /* Save grid size (with OpenGL axes order) */
+        gridSizeOGL = new float[]{
+                gridSizeVLY[0] * sideLengthOGL,
+                gridSizeVLY[2] * sideLengthOGL, // swap axis -2 with -1
+                gridSizeVLY[1] * sideLengthOGL
+        };
+
         maxGridSizeOGL = Math.max(Math.max(gridSizeOGL[0], gridSizeOGL[1]), gridSizeOGL[2]);
-        minEyeZ = maxGridSizeOGL;
+
+        // float maxDiameterOGL
+
+        minEyeZ = maxGridSizeOGL; // TODO: max(gsx, gsy)
         maxEyeZ = maxGridSizeOGL * 3.0f;
         eyePos = new float[]{0.0f, 0.0f, maxEyeZ};
         lightPos = new float[]{0.0f, maxGridSizeOGL, maxEyeZ};
@@ -353,27 +363,24 @@ public class NaiveVoxelRenderer extends BasicRenderer {
 
         countFacesToElement = indices.length; // TODO: Why faces == indices.length?
 
-
+        /* VAO and VBOs */
         VAO = new int[1]; // one VAO to bind both vpos and normals
-        int[] VBO = new int[2]; //0: vpos, 1: indices
+        int[] VBO = new int[2]; // 0: vpos, 1: indices
 
         glGenBuffers(2, VBO, 0);
 
         GLES30.glGenVertexArrays(1, VAO, 0);
 
         GLES30.glBindVertexArray(VAO[0]);
-        glBindBuffer(GL_ARRAY_BUFFER, VBO[0]);
-        glBufferData(GL_ARRAY_BUFFER, Float.BYTES * vertexData.capacity(),
-                vertexData, GL_STATIC_DRAW);
-        glVertexAttribPointer(1, 3, GL_FLOAT, false, 6 * Float.BYTES, 0); // vpos
-        glVertexAttribPointer(2, 3, GL_FLOAT, false, 6 * Float.BYTES, 3 * Float.BYTES); // normal
-        glEnableVertexAttribArray(1);
-        glEnableVertexAttribArray(2);
+            glBindBuffer(GL_ARRAY_BUFFER, VBO[0]);
+                glBufferData(GL_ARRAY_BUFFER, Float.BYTES * vertexData.capacity(), vertexData, GL_STATIC_DRAW);
+                glVertexAttribPointer(1, 3, GL_FLOAT, false, 6 * Float.BYTES, 0); // vpos
+                glVertexAttribPointer(2, 3, GL_FLOAT, false, 6 * Float.BYTES, 3 * Float.BYTES); // normal
+                glEnableVertexAttribArray(1);
+                glEnableVertexAttribArray(2);
 
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, VBO[1]);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, Integer.BYTES * indexData.capacity(), indexData,
-                GL_STATIC_DRAW);
-
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, VBO[1]);
+                glBufferData(GL_ELEMENT_ARRAY_BUFFER, Integer.BYTES * indexData.capacity(), indexData, GL_STATIC_DRAW);
         GLES30.glBindVertexArray(0);
 
         MVPloc = glGetUniformLocation(shaderHandle, "MVP");
@@ -384,8 +391,8 @@ public class NaiveVoxelRenderer extends BasicRenderer {
 
         /* Pre load uniform values */
         glUseProgram(shaderHandle);
-        glUniform3fv(uLightPos, 1, lightPos, 0);
-        glUniform3fv(uEyePos, 1, eyePos, 0);
+            glUniform3fv(uLightPos, 1, lightPos, 0);
+            glUniform3fv(uEyePos, 1, eyePos, 0);
         glUseProgram(0);
 
         glEnable(GL_DEPTH_TEST);
@@ -397,8 +404,9 @@ public class NaiveVoxelRenderer extends BasicRenderer {
 
         /* Create a bitmap for palette */
         int numColors = paletteRaw.length / 3;
-        int y = (int) Math.ceil(Math.log(numColors) / Math.log(2) / 2.0); // TODO: use more efficient math
-        paletteBitmapSide = (int) Math.pow(2, y);
+        int y = (int) Math.ceil(Math.log(numColors) / Math.log(2) / 2.0); // TODO: add explanation
+        // paletteBitmapSide = (int) Math.pow(2, y);
+        paletteBitmapSide = 1 << y;
 
         @ColorInt int[] encodedColors = new int[paletteBitmapSide * paletteBitmapSide];
         for (int i = 0; i < numColors; i++) {
@@ -409,21 +417,21 @@ public class NaiveVoxelRenderer extends BasicRenderer {
             );
         }
 
-        Bitmap paletteBitmap = Bitmap.createBitmap(encodedColors, paletteBitmapSide, paletteBitmapSide, Bitmap.Config.ARGB_8888);
+        Bitmap paletteBitmap = Bitmap.createBitmap(encodedColors, paletteBitmapSide, paletteBitmapSide, Bitmap.Config.ARGB_8888); // TODO: try RGB565
 
-        Log.v(TAG,"bitmap of size " + paletteBitmap.getWidth()+"x"+paletteBitmap.getHeight()+ " loaded " +
+        Log.v(TAG, "[onSurfaceCreated]: bitmap of size " + paletteBitmap.getWidth() + "x" + paletteBitmap.getHeight() + " loaded " +
                 "with format " + paletteBitmap.getConfig().name());
 
         texObjId = new int[1];
         glGenTextures(1, texObjId, 0); // texture object creaction
         glBindTexture(GL_TEXTURE_2D, texObjId[0]); // binding
-        // these two are mandatory also with texelFetch !!!
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        // related to “texObjId[0]”, what happens if we go over the S and T dimension?
-        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        GLUtils.texImage2D(GL_TEXTURE_2D, 0, paletteBitmap,0); // transfer host data to device memory
+            // these two are mandatory also with texelFetch !!!
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            // related to “texObjId[0]”, what happens if we go over the S and T dimension?
+            // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+            // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+            GLUtils.texImage2D(GL_TEXTURE_2D, 0, paletteBitmap, 0); // transfer host data to device memory
         glBindTexture(GL_TEXTURE_2D, 0); // unbinding
 
         uTexUnit = glGetUniformLocation(shaderHandle, "tex");
@@ -432,10 +440,10 @@ public class NaiveVoxelRenderer extends BasicRenderer {
         /* Pre load uniforms values */
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texObjId[0]);
-        glUseProgram(shaderHandle);
-        // bind image pointed by texObjId[0] to the sampler object (that has location uTexUnit)
-        glUniform1i(uTexUnit, 0); // 0 because active texture is GL_TEXTURE0
-        glUseProgram(0);
+            glUseProgram(shaderHandle);
+                // bind image pointed by texObjId[0] to the sampler object (that has location uTexUnit)
+                glUniform1i(uTexUnit, 0); // 0 because active texture is GL_TEXTURE0
+            glUseProgram(0);
         glBindTexture(GL_TEXTURE_2D, 0);
 
         paletteBitmap.recycle();
@@ -453,6 +461,7 @@ public class NaiveVoxelRenderer extends BasicRenderer {
 
         for (int i = 0; i < voxelsRaw.length; i += VlyObject.VOXEL_DATA_SIZE) {
             // TODO: should update eye pos uniform ?!
+            glUniform3fv(uEyePos, 1, eyePos, 0);
 
             /* Compute VP part of MVP */
             Matrix.setLookAtM(viewM, 0, 0, 0f, minEyeZ + (maxEyeZ - minEyeZ) * (maxZoom - zoom) / (maxZoom - minZoom),
@@ -477,6 +486,7 @@ public class NaiveVoxelRenderer extends BasicRenderer {
                     voxelsRaw[i + 2] * sideLengthOGL, // since Z is the up axis in .vly
                     -voxelsRaw[i + 1] * sideLengthOGL
             );
+            // TODO: can put all in a single translateM?
 
             /* Send model matrix */
             glUniformMatrix4fv(uModelM, 1, false, modelM, 0);
@@ -495,9 +505,9 @@ public class NaiveVoxelRenderer extends BasicRenderer {
             // texture() coordinates starts bottom-left and are normalized in [0, 1]
             // texelFetch() coordinates starts top-left and are in [0, sideSize]
             glUniform2i(
-                uTexCoord,
-                paletteIdx % paletteBitmapSide,
-                paletteIdx / paletteBitmapSide
+                    uTexCoord,
+                    paletteIdx % paletteBitmapSide,
+                    paletteIdx / paletteBitmapSide
             );
 
             glDrawElements(drawMode, countFacesToElement, GL_UNSIGNED_INT, 0);
