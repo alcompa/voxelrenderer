@@ -31,6 +31,7 @@ import com.alcompa.voxelrenderer.utils.ShaderCompiler;
 import com.alcompa.voxelrenderer.utils.VlyObject;
 
 import static android.opengl.GLES10.GL_CCW;
+import static android.opengl.GLES20.GL_INT;
 import static android.opengl.GLES20.GL_LINE_LOOP;
 import static android.opengl.GLES20.GL_NEAREST;
 import static android.opengl.GLES20.GL_TEXTURE0;
@@ -75,12 +76,11 @@ import static android.opengl.GLES20.glVertexAttribPointer;
 import androidx.annotation.ColorInt;
 import androidx.core.view.GestureDetectorCompat;
 
-/* debugging */
 
-public class NaiveVoxelRenderer extends BasicRenderer {
-    private static final String VSHAD_FILENAME = "naivevertex.glslv";
-    private static final String FSHAD_FILENAME = "naivefragment.glslf";
-    private static final String VOXMODEL_FILENAME = "dragon.vly";
+public class InstancedVoxelRenderer extends BasicRenderer {
+    private static final String VSHAD_FILENAME = "instancedvertex.glslv";
+    private static final String FSHAD_FILENAME = "instancedfragment.glslf";
+    private static final String VOXMODEL_FILENAME = "christmas.vly";
 
     private int shaderHandle;
     private int[] VAO;
@@ -94,10 +94,12 @@ public class NaiveVoxelRenderer extends BasicRenderer {
     private float[] MVP;
     private float[] temp;
     private float[] inverseModel;
+    private float[] axesM; // to convert vly axes to opengl axes
 
     private int uModelM;
     private int uInverseModel;
     private int MVPloc;
+    private int uAxesM;
 
     private int drawMode;
     private int countFacesToElement;
@@ -127,10 +129,11 @@ public class NaiveVoxelRenderer extends BasicRenderer {
     private boolean gestureDetected;
 
     private int[] voxelsRaw; // TODO: make local variables in onSurfaceCreated
+    private int numVoxels;
     private int paletteBitmapSide;
 
-    public NaiveVoxelRenderer() {
-        super(0, 0, 0);
+    public InstancedVoxelRenderer() {
+        super(1, 1, 1);
 
         lightPos = new float[]{-0.25f, 0.25f, 10.0f}; // TODO: check
         eyePos = new float[]{0f, 0f, 10f}; // TODO: check
@@ -142,12 +145,14 @@ public class NaiveVoxelRenderer extends BasicRenderer {
         MVP = new float[16];
         temp = new float[16];
         inverseModel = new float[16];
+        axesM = new float[16];
 
         Matrix.setIdentityM(modelM, 0);
         Matrix.setIdentityM(viewM, 0);
         Matrix.setIdentityM(projM, 0);
         Matrix.setIdentityM(MVP, 0);
         Matrix.setIdentityM(inverseModel, 0);
+        Matrix.setIdentityM(axesM, 0);
 
         sideLengthOGL = 1.0f; // TODO: make it final
         angleY = 0.0f;
@@ -315,6 +320,7 @@ public class NaiveVoxelRenderer extends BasicRenderer {
             Log.v(TAG, vo.toString());
 
             voxelsRaw = vo.getVoxelsRaw();
+            numVoxels = voxelsRaw.length / VlyObject.VOXEL_DATA_SIZE;
             paletteRaw = vo.getPaletteRaw();
             gridSizeVLY = vo.getGridSize();
         } catch (IOException | NumberFormatException e) {
@@ -341,6 +347,8 @@ public class NaiveVoxelRenderer extends BasicRenderer {
         lightPos = new float[]{0.0f, maxGridSizeOGL, maxEyeZ};
 
         /* Resource allocation and initialization */
+
+        /* VERTEX LEVEL DATA */
         FloatBuffer vertexData =
                 ByteBuffer.allocateDirect(vertices.length * Float.BYTES)
                         .order(ByteOrder.nativeOrder())
@@ -357,37 +365,56 @@ public class NaiveVoxelRenderer extends BasicRenderer {
 
         countFacesToElement = indices.length; // TODO: Why faces == indices.length?
 
-        /* VAO and VBOs */
-        VAO = new int[1]; // one VAO to bind both vpos and normals
-        int[] VBO = new int[2]; // 0: vpos, 1: indices
+        /* INSTANCE LEVEL DATA */
+        IntBuffer instanceData =
+                ByteBuffer.allocateDirect(voxelsRaw.length * Integer.BYTES)
+                        .order(ByteOrder.nativeOrder())
+                        .asIntBuffer();
+        instanceData.put(voxelsRaw);
+        instanceData.position(0);
 
-        glGenBuffers(2, VBO, 0);
+        /* VAO and VBOs */
+        VAO = new int[1]; // one VAO to bind vpos, normals, translations, paletteindexes
+        int[] VBO = new int[3]; // 0: vpos, 1: indices
+
+        glGenBuffers(3, VBO, 0);
 
         GLES30.glGenVertexArrays(1, VAO, 0);
 
         GLES30.glBindVertexArray(VAO[0]);
-            glBindBuffer(GL_ARRAY_BUFFER, VBO[0]);
-                glBufferData(GL_ARRAY_BUFFER, Float.BYTES * vertexData.capacity(), vertexData, GL_STATIC_DRAW);
-                glVertexAttribPointer(1, 3, GL_FLOAT, false, 6 * Float.BYTES, 0); // vpos
-                glVertexAttribPointer(2, 3, GL_FLOAT, false, 6 * Float.BYTES, 3 * Float.BYTES); // normal
-                glEnableVertexAttribArray(1);
-                glEnableVertexAttribArray(2);
+        // VERTEX LEVEL DATA
+        glBindBuffer(GL_ARRAY_BUFFER, VBO[0]);
+        glBufferData(GL_ARRAY_BUFFER, Float.BYTES * vertexData.capacity(), vertexData, GL_STATIC_DRAW);
+        glVertexAttribPointer(1, 3, GL_FLOAT, false, 6 * Float.BYTES, 0); // vpos
+        glVertexAttribPointer(2, 3, GL_FLOAT, false, 6 * Float.BYTES, 3 * Float.BYTES); // normal
+        glEnableVertexAttribArray(1);
+        glEnableVertexAttribArray(2);
 
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, VBO[1]);
-                glBufferData(GL_ELEMENT_ARRAY_BUFFER, Integer.BYTES * indexData.capacity(), indexData, GL_STATIC_DRAW);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, VBO[1]);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, Integer.BYTES * indexData.capacity(), indexData, GL_STATIC_DRAW);
+
+        // INSTANCE LEVEL DATA
+        glBindBuffer(GL_ARRAY_BUFFER, VBO[2]);
+        glBufferData(GL_ARRAY_BUFFER, Integer.BYTES * instanceData.capacity(), instanceData, GL_STATIC_DRAW);
+        glVertexAttribPointer(3, 3, GL_INT, false, 4 * Integer.BYTES, 0); // translation
+        glVertexAttribPointer(4, 1, GL_INT, false, 4 * Integer.BYTES, 3 * Integer.BYTES); // palette index
+        glEnableVertexAttribArray(3);
+        glEnableVertexAttribArray(4);
+        GLES30.glVertexAttribDivisor(3, 1); // update the variable at location 3 (translation) each 1 istance
+        GLES30.glVertexAttribDivisor(4, 1);
+
         GLES30.glBindVertexArray(0);
 
         MVPloc = glGetUniformLocation(shaderHandle, "MVP");
-        uModelM = glGetUniformLocation(shaderHandle, "modelMatrix");
-        uInverseModel = glGetUniformLocation(shaderHandle, "inverseModel");
-
+        // uModelM = glGetUniformLocation(shaderHandle, "modelMatrix"); // TODO: non serve più, c'è traslation
+        // uInverseModel = glGetUniformLocation(shaderHandle, "inverseModel"); // TODO: come faccio? calcolo l'inversa nello shader?
         uLightPos = glGetUniformLocation(shaderHandle, "lightPos");
         uEyePos = glGetUniformLocation(shaderHandle, "eyePos");
 
         /* Pre load uniform values */
         glUseProgram(shaderHandle);
-            glUniform3fv(uLightPos, 1, lightPos, 0);
-            glUniform3fv(uEyePos, 1, eyePos, 0);
+        glUniform3fv(uLightPos, 1, lightPos, 0);
+        glUniform3fv(uEyePos, 1, eyePos, 0);
         glUseProgram(0);
 
         glEnable(GL_DEPTH_TEST);
@@ -406,9 +433,9 @@ public class NaiveVoxelRenderer extends BasicRenderer {
         @ColorInt int[] encodedColors = new int[paletteBitmapSide * paletteBitmapSide];
         for (int i = 0; i < numColors; i++) {
             encodedColors[i] = Color.rgb(
-                paletteRaw[i * VlyObject.COLOR_DATA_SIZE],
-                paletteRaw[i * VlyObject.COLOR_DATA_SIZE + 1],
-                paletteRaw[i * VlyObject.COLOR_DATA_SIZE + 2]
+                    paletteRaw[i * VlyObject.COLOR_DATA_SIZE],
+                    paletteRaw[i * VlyObject.COLOR_DATA_SIZE + 1],
+                    paletteRaw[i * VlyObject.COLOR_DATA_SIZE + 2]
             );
         }
 
@@ -417,31 +444,54 @@ public class NaiveVoxelRenderer extends BasicRenderer {
         Log.v(TAG, "[onSurfaceCreated]: bitmap of size " + paletteBitmap.getWidth() + "x" + paletteBitmap.getHeight() + " loaded " +
                 "with format " + paletteBitmap.getConfig().name());
 
+        // GLOBAL LEVEL DATA
         texObjId = new int[1];
         glGenTextures(1, texObjId, 0); // texture object creaction
         glBindTexture(GL_TEXTURE_2D, texObjId[0]); // binding
-            // these two are mandatory also with texelFetch !!!
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            // related to “texObjId[0]”, what happens if we go over the S and T dimension?
-            // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-            // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-            GLUtils.texImage2D(GL_TEXTURE_2D, 0, paletteBitmap, 0); // transfer host data to device memory
+        // these two are mandatory also with texelFetch !!!
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        // related to “texObjId[0]”, what happens if we go over the S and T dimension?
+        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        GLUtils.texImage2D(GL_TEXTURE_2D, 0, paletteBitmap, 0); // transfer host data to device memory
         glBindTexture(GL_TEXTURE_2D, 0); // unbinding
 
         uTexUnit = glGetUniformLocation(shaderHandle, "tex");
-        uTexCoord = glGetUniformLocation(shaderHandle, "texCoord");
+        // uTexCoord = glGetUniformLocation(shaderHandle, "texCoord"); // TODO: non serve più, c'è palette idx
 
         /* Pre load uniforms values */
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texObjId[0]);
-            glUseProgram(shaderHandle);
-                // bind image pointed by texObjId[0] to the sampler object (that has location uTexUnit)
-                glUniform1i(uTexUnit, 0); // 0 because active texture is GL_TEXTURE0
-            glUseProgram(0);
+        glUseProgram(shaderHandle);
+        // bind image pointed by texObjId[0] to the sampler object (that has location uTexUnit)
+        glUniform1i(uTexUnit, 0); // 0 because active texture is GL_TEXTURE0
+        glUseProgram(0);
         glBindTexture(GL_TEXTURE_2D, 0);
 
         paletteBitmap.recycle();
+
+        /* Compute axes transformations */
+        uAxesM = glGetUniformLocation(shaderHandle, "axesM");
+
+        // Start reading code from scale, then rotate, then translate
+
+        // axesM @ T
+        /*Matrix.translateM(axesM, 0,
+                gridSizeOGL[0] / 2.0f - sideLengthOGL / 2.0f,
+                gridSizeOGL[1] / 2.0f - sideLengthOGL / 2.0f,
+                gridSizeOGL[2] / 2.0f - sideLengthOGL / 2.0f
+                );
+
+        // axesM @ T @ R
+        Matrix.setRotateM(axesM, 0, -90, 1, 0, 0);
+
+        // axesM @ T @ R @ S
+        Matrix.scaleM(axesM, 0, -1, 1, 1);*/
+
+        glUseProgram(shaderHandle);
+            glUniformMatrix4fv(uAxesM, 1, false, axesM, 0);
+        glUseProgram(0);
     }
 
     @Override
@@ -456,6 +506,7 @@ public class NaiveVoxelRenderer extends BasicRenderer {
 
         // TODO: should update eye pos uniform ?!
         eyePos[2] = minEyeZ + (maxEyeZ - minEyeZ) * (maxZoom - zoom) / (maxZoom - minZoom);
+        // eyePos[2] += 10f;
         glUniform3fv(uEyePos, 1, eyePos, 0);
 
         /* Compute VP part of MVP */
@@ -464,51 +515,57 @@ public class NaiveVoxelRenderer extends BasicRenderer {
                 0, 1, 0);
         Matrix.multiplyMM(temp, 0, projM, 0, viewM, 0);
 
-        for (int i = 0; i < voxelsRaw.length; i += VlyObject.VOXEL_DATA_SIZE) {
-            /* Compute model matrix */
-            Matrix.setIdentityM(modelM, 0);
-            Matrix.rotateM(modelM, 0, angleY, 0.0f, 1.0f, 0.0f);
+        // TODO: rename, this is only VP
+        glUniformMatrix4fv(MVPloc, 1, false, MVP, 0);
 
-            // sidelen and voxraw signs are equal, gridsize/2 opposite
-            Matrix.translateM(modelM, 0,
-                    gridSizeOGL[0] / 2.0f - sideLengthOGL / 2.0f,
-                    -gridSizeOGL[1] / 2.0f + sideLengthOGL / 2.0f,
-                    gridSizeOGL[2] / 2.0f - sideLengthOGL / 2.0f
-            );
+        GLES30.glDrawElementsInstanced(GL_TRIANGLES, countFacesToElement, GL_UNSIGNED_INT, 0, numVoxels);
 
-            Matrix.translateM(modelM,
-                    0,
-                    -voxelsRaw[i] * sideLengthOGL,
-                    voxelsRaw[i + 2] * sideLengthOGL, // since Z is the up axis in .vly
-                    -voxelsRaw[i + 1] * sideLengthOGL
-            );
-            // TODO: can put all in a single translateM? NO. The first is related to axes
-            // TODO: handle sign inversion with a scale matrix
+//        for (int i = 0; i < voxelsRaw.length; i += VlyObject.VOXEL_DATA_SIZE) {
+//            /* Compute model matrix */
+//            Matrix.setIdentityM(modelM, 0);
+//            Matrix.rotateM(modelM, 0, angleY, 0.0f, 1.0f, 0.0f);
+//
+//            // sidelen and voxraw signs are equal, gridsize/2 opposite
+//            Matrix.translateM(modelM, 0,
+//                    gridSizeOGL[0] / 2.0f - sideLengthOGL / 2.0f,
+//                    -gridSizeOGL[1] / 2.0f + sideLengthOGL / 2.0f,
+//                    gridSizeOGL[2] / 2.0f - sideLengthOGL / 2.0f
+//            );
+//
+//            Matrix.translateM(modelM,
+//                    0,
+//                    -voxelsRaw[i] * sideLengthOGL,
+//                    voxelsRaw[i + 2] * sideLengthOGL, // since Z is the up axis in .vly
+//                    -voxelsRaw[i + 1] * sideLengthOGL
+//            );
+//            // TODO: can put all in a single translateM? NO. The first is related to axes
+//            // TODO: handle sign inversion with a scale matrix
+//
+//            /* Send model matrix */
+//            glUniformMatrix4fv(uModelM, 1, false, modelM, 0);
+//
+//            /* Compute and send MVP */
+//            Matrix.multiplyMM(MVP, 0, temp, 0, modelM, 0);
+//            glUniformMatrix4fv(MVPloc, 1, false, MVP, 0);
+//
+//            /* Compute and send T(M^-1) */
+//            Matrix.invertM(inverseModel, 0, modelM, 0);
+//            glUniformMatrix4fv(uInverseModel, 1, true, inverseModel, 0); // transpose while send
+//
+//            /* Retrieve color from palette */
+//            int paletteIdx = voxelsRaw[i + VlyObject.VOXEL_DATA_SIZE - 1];
+//
+//            // texture() coordinates starts bottom-left and are normalized in [0, 1]
+//            // texelFetch() coordinates starts top-left and are in [0, sideSize]
+//            glUniform2i(
+//                    uTexCoord,
+//                    paletteIdx % paletteBitmapSide,
+//                    paletteIdx / paletteBitmapSide
+//            );
+//
+//            glDrawElements(drawMode, countFacesToElement, GL_UNSIGNED_INT, 0);
+//        }
 
-            /* Send model matrix */
-            glUniformMatrix4fv(uModelM, 1, false, modelM, 0);
-
-            /* Compute and send MVP */
-            Matrix.multiplyMM(MVP, 0, temp, 0, modelM, 0);
-            glUniformMatrix4fv(MVPloc, 1, false, MVP, 0);
-
-            /* Compute and send T(M^-1) */
-            Matrix.invertM(inverseModel, 0, modelM, 0);
-            glUniformMatrix4fv(uInverseModel, 1, true, inverseModel, 0); // transpose while send
-
-            /* Retrieve color from palette */
-            int paletteIdx = voxelsRaw[i + VlyObject.VOXEL_DATA_SIZE - 1];
-
-            // texture() coordinates starts bottom-left and are normalized in [0, 1]
-            // texelFetch() coordinates starts top-left and are in [0, sideSize]
-            glUniform2i(
-                    uTexCoord,
-                    paletteIdx % paletteBitmapSide,
-                    paletteIdx / paletteBitmapSide
-            );
-
-            glDrawElements(drawMode, countFacesToElement, GL_UNSIGNED_INT, 0);
-        }
 
         GLES30.glBindVertexArray(0);
         glUseProgram(0);

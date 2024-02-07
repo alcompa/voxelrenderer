@@ -61,7 +61,8 @@ public class MainActivity extends AppCompatActivity {
         });
 
         // GLSurfaceView.Renderer renderer = new BasicRenderer(0.45f,0.32f,0.13f);
-        GLSurfaceView.Renderer renderer = new NaiveVoxelRenderer();
+        // GLSurfaceView.Renderer renderer = new NaiveVoxelRenderer();
+        GLSurfaceView.Renderer renderer = new InstancedVoxelRenderer();
 
         setContentView(surface);
         ((BasicRenderer) renderer).setContextAndSurface(this,surface);
