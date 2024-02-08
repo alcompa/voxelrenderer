@@ -78,9 +78,9 @@ import androidx.annotation.ColorInt;
 import androidx.core.view.GestureDetectorCompat;
 
 public class InstancedVoxelRenderer extends BasicRenderer {
-    private static final String VSHAD_FILENAME = "instancedvertex.glslv";
-    private static final String FSHAD_FILENAME = "instancedfragment.glslf";
-    private static final String VOXMODEL_FILENAME = "dragon.vly";
+    private static final String VSHAD_FILENAME = "lightinstancedvertex.glslv";
+    private static final String FSHAD_FILENAME = "lightinstancedfragment.glslf";
+    private static final String VOXMODEL_FILENAME = "christmas.vly";
 
     private int shaderHandle;
     private int[] VAO;
@@ -142,7 +142,7 @@ public class InstancedVoxelRenderer extends BasicRenderer {
 
         sideLengthOGL = 1.0f; // TODO: make it final
 
-        angleY = 90.0f;
+        angleY = 0.0f;
         slowAngleIncrement = 0.5f; // TODO: cannot be computed now
         fastAngleIncrement = 5.0f; // TODO: cannot be computed now
 
@@ -167,7 +167,7 @@ public class InstancedVoxelRenderer extends BasicRenderer {
                 // Don't let the object get too small or too large.
                 zoom = Math.max(minZoom, Math.min(zoom, maxZoom));
                 Log.v(TAG, "[onScale]: zoom set to " + Float.toString(zoom));
-                surface.invalidate(); // TODO: check if it calls onSurfaceCreated/Changed
+                surface.invalidate(); // forces update
 
                 return true;
             }
@@ -244,10 +244,6 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         Log.v(TAG, "[onSurfaceChanged]: Aspect ratio: " + Float.toString(aspect));
 
         Matrix.perspectiveM(projM, 0, 45f, aspect, 0.1f, 1000f);
-
-        Matrix.setLookAtM(viewM, 0, eyePos[0], eyePos[1], eyePos[2],
-                0, 0, 0,
-                0, 1, 0);
     }
 
     @Override
@@ -359,10 +355,10 @@ public class InstancedVoxelRenderer extends BasicRenderer {
 
         // TODO: find appropriate values
         minEyeDistance = maxGridSizeOGL; // maxDiameterOGL / 2.0f + sideLengthOGL;
-        maxEyeDistance = maxGridSizeOGL * 10.0f; // maxDiameterOGL * 2.5f;
+        maxEyeDistance = maxGridSizeOGL * 5.0f; // maxDiameterOGL * 2.5f;
 
         eyePos = new float[]{0.0f, 0.0f, 50.0f};
-        lightPos = new float[]{0.0f, maxGridSizeOGL, maxGridSizeOGL * 3.0f};
+        lightPos = new float[]{eyePos[0], eyePos[1], eyePos[2]}; // new float[]{0.0f, maxGridSizeOGL * 2.0f, 0.0f}; // TODO
 
         // Axes transformations: start reading code from translate, then rotate, then scale
         Matrix.scaleM(axesM, 0, -1, 1, 1);
@@ -418,7 +414,7 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         /* Pre load uniform values */
         glUseProgram(shaderHandle);
             glUniform3fv(uLightPos, 1, lightPos, 0);
-            glUniform3fv(uEyePos, 1, eyePos, 0); // TODO: gets updated in onDraw
+            glUniform3fv(uEyePos, 1, eyePos, 0); // TODO: useless if you update in onDraw
             glUniformMatrix4fv(uAxesM, 1, false, axesM, 0);
         glUseProgram(0);
 
@@ -467,6 +463,8 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         // opp = sin(angle) * hyp
         eyePos[2] = (float) Math.sin(Math.toRadians(angleY)) * magnitude;
 
+        lightPos[0] = eyePos[0]; lightPos[1] = eyePos[1]; lightPos[2] = eyePos[2]; // TODO: comment if light should stay fixed
+
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texObjId[0]);
 
@@ -474,6 +472,7 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         GLES30.glBindVertexArray(VAO[0]);
 
             glUniform3fv(uEyePos, 1, eyePos, 0);
+            glUniform3fv(uLightPos, 1, lightPos, 0); // TODO: comment if light should stay fixed
 
             Matrix.setIdentityM(VP, 0);
             /* Compute VP part of MVP */
@@ -488,52 +487,6 @@ public class InstancedVoxelRenderer extends BasicRenderer {
 
         GLES30.glBindVertexArray(0);
         glUseProgram(0);
-
-//        for (int i = 0; i < voxelsRaw.length; i += VlyObject.VOXEL_DATA_SIZE) {
-//            /* Compute model matrix */
-//            Matrix.setIdentityM(modelM, 0);
-//            Matrix.rotateM(modelM, 0, angleY, 0.0f, 1.0f, 0.0f);
-//
-//            // sidelen and voxraw signs are equal, gridsize/2 opposite
-//            Matrix.translateM(modelM, 0,
-//                    gridSizeOGL[0] / 2.0f - sideLengthOGL / 2.0f,
-//                    -gridSizeOGL[1] / 2.0f + sideLengthOGL / 2.0f,
-//                    gridSizeOGL[2] / 2.0f - sideLengthOGL / 2.0f
-//            );
-//
-//            Matrix.translateM(modelM,
-//                    0,
-//                    -voxelsRaw[i] * sideLengthOGL,
-//                    voxelsRaw[i + 2] * sideLengthOGL, // since Z is the up axis in .vly
-//                    -voxelsRaw[i + 1] * sideLengthOGL
-//            );
-//            // TODO: can put all in a single translateM? NO. The first is related to axes
-//            // TODO: handle sign inversion with a scale matrix
-//
-//            /* Send model matrix */
-//            glUniformMatrix4fv(uModelM, 1, false, modelM, 0);
-//
-//            /* Compute and send MVP */
-//            Matrix.multiplyMM(MVP, 0, temp, 0, modelM, 0);
-//            glUniformMatrix4fv(MVPloc, 1, false, MVP, 0);
-//
-//            /* Compute and send T(M^-1) */
-//            Matrix.invertM(inverseModel, 0, modelM, 0);
-//            glUniformMatrix4fv(uInverseModel, 1, true, inverseModel, 0); // transpose while send
-//
-//            /* Retrieve color from palette */
-//            int paletteIdx = voxelsRaw[i + VlyObject.VOXEL_DATA_SIZE - 1];
-//
-//            // texture() coordinates starts bottom-left and are normalized in [0, 1]
-//            // texelFetch() coordinates starts top-left and are in [0, sideSize]
-//            glUniform2i(
-//                    uTexCoord,
-//                    paletteIdx % paletteBitmapSide,
-//                    paletteIdx / paletteBitmapSide
-//            );
-//
-//            glDrawElements(drawMode, countFacesToElement, GL_UNSIGNED_INT, 0);
-//        }
 
     }
 
