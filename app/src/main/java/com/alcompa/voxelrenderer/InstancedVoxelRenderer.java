@@ -30,16 +30,16 @@ import com.alcompa.voxelrenderer.utils.PlyObject;
 import com.alcompa.voxelrenderer.utils.ShaderCompiler;
 import com.alcompa.voxelrenderer.utils.VlyObject;
 
-import static android.opengl.GLES10.GL_CCW;
+import static android.opengl.GLES20.GL_CCW;
 import static android.opengl.GLES20.GL_INT;
 import static android.opengl.GLES20.GL_LINE_LOOP;
 import static android.opengl.GLES20.GL_NEAREST;
-import static android.opengl.GLES20.GL_REPEAT;
+import static android.opengl.GLES20.GL_NO_ERROR;
 import static android.opengl.GLES20.GL_TEXTURE0;
 import static android.opengl.GLES20.GL_TEXTURE_2D;
 import static android.opengl.GLES20.GL_TEXTURE_MAG_FILTER;
 import static android.opengl.GLES20.GL_TEXTURE_MIN_FILTER;
-import static android.opengl.GLES20.GL_TEXTURE_WRAP_T;
+import static android.opengl.GLES20.GL_VERSION;
 import static android.opengl.GLES20.glActiveTexture;
 import static android.opengl.GLES20.glBindTexture;
 import static android.opengl.GLES20.glFrontFace;
@@ -60,59 +60,52 @@ import static android.opengl.GLES20.glBufferData;
 import static android.opengl.GLES20.glClear;
 import static android.opengl.GLES20.glCullFace;
 import static android.opengl.GLES20.glDepthFunc;
-import static android.opengl.GLES20.glDrawElements;
 import static android.opengl.GLES20.glEnable;
 import static android.opengl.GLES20.glEnableVertexAttribArray;
 import static android.opengl.GLES20.glGenBuffers;
 import static android.opengl.GLES20.glGenTextures;
+import static android.opengl.GLES20.glGetError;
+import static android.opengl.GLES20.glGetString;
 import static android.opengl.GLES20.glGetUniformLocation;
 import static android.opengl.GLES20.glTexParameteri;
 import static android.opengl.GLES20.glUniform1i;
-import static android.opengl.GLES20.glUniform2fv;
-import static android.opengl.GLES20.glUniform2i;
 import static android.opengl.GLES20.glUniform3fv;
 import static android.opengl.GLES20.glUniformMatrix4fv;
 import static android.opengl.GLES20.glUseProgram;
 import static android.opengl.GLES20.glVertexAttribPointer;
 
-import static javax.microedition.khronos.opengles.GL10.GL_TEXTURE_WRAP_S;
-
 import androidx.annotation.ColorInt;
 import androidx.core.view.GestureDetectorCompat;
-
 
 public class InstancedVoxelRenderer extends BasicRenderer {
     private static final String VSHAD_FILENAME = "instancedvertex.glslv";
     private static final String FSHAD_FILENAME = "instancedfragment.glslf";
-    private static final String VOXMODEL_FILENAME = "monu2.vly";
+    private static final String VOXMODEL_FILENAME = "chrk.vly";
 
     private int shaderHandle;
     private int[] VAO;
     private int[] texObjId;
     private int uTexUnit;
-    private int uTexCoord;
 
-    private float[] modelM;
     private float[] viewM;
     private float[] projM;
-    private float[] MVP;
-    private float[] temp;
-    private float[] inverseModel;
-    private float[] axesM; // to convert vly axes to opengl axes
 
-    private int uModelM;
-    private int uInverseModel;
-    private int MVPloc;
+    private float[] VP;
+    private float[] axesM; // to convert vly axes to opengl axes
+    private int uVP;
     private int uAxesM;
 
-    private int drawMode;
     private int countFacesToElement;
 
-    private float[] lightPos;
-    private int uLightPos;
+    private int numVoxels;
 
     private float[] eyePos;
     private int uEyePos;
+    private float minEyeZ; // TODO: rename in eyedist
+    private float maxEyeZ;
+
+    private float[] lightPos;
+    private int uLightPos;
 
     private float sideLengthOGL;
     private float[] gridSizeOGL;
@@ -122,41 +115,33 @@ public class InstancedVoxelRenderer extends BasicRenderer {
     private float slowAngleIncrement;
     private float fastAngleIncrement;
 
+    private float zoom;
     private float minZoom;
     private float maxZoom;
-    private float zoom;
-    private float minEyeZ;
-    private float maxEyeZ;
+
+    private int drawMode;
 
     private ScaleGestureDetector scaleDetector;
     private GestureDetectorCompat gestureDetector;
     private boolean gestureDetected;
 
-    private int numVoxels;
-
     public InstancedVoxelRenderer() {
-        super(1, 1, 1);
-
-        lightPos = new float[]{-0.25f, 0.25f, 10.0f}; // TODO: check
-        eyePos = new float[]{0f, 0f, 10f}; // TODO: check
+        super(0, 0, 0);
 
         drawMode = GL_TRIANGLES;
+
         viewM = new float[16];
-        modelM = new float[16];
         projM = new float[16];
-        MVP = new float[16];
-        temp = new float[16];
-        inverseModel = new float[16];
+        VP = new float[16];
         axesM = new float[16];
 
-        Matrix.setIdentityM(modelM, 0);
         Matrix.setIdentityM(viewM, 0);
         Matrix.setIdentityM(projM, 0);
-        Matrix.setIdentityM(MVP, 0);
-        Matrix.setIdentityM(inverseModel, 0);
+        Matrix.setIdentityM(VP, 0);
         Matrix.setIdentityM(axesM, 0);
 
         sideLengthOGL = 1.0f; // TODO: make it final
+
         angleY = 0.0f;
         slowAngleIncrement = 0.5f; // TODO: cannot be computed now
         fastAngleIncrement = 5.0f; // TODO: cannot be computed now
@@ -164,8 +149,6 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         minZoom = 1.0f; // TODO: check
         maxZoom = 5.0f; // TODO: check
         zoom = 1.0f;
-        minEyeZ = 0.0f; // TODO: cannot be computed now
-        maxEyeZ = 10.0f; // TODO: cannot be computed now
 
         gestureDetected = false;
     }
@@ -271,6 +254,8 @@ public class InstancedVoxelRenderer extends BasicRenderer {
     public void onSurfaceCreated(GL10 gl10, EGLConfig eglConfig) {
         super.onSurfaceCreated(gl10, eglConfig);
 
+        Log.v(TAG,"[onSurfaceCreated]: OPENGL VERSION " + glGetString(GL_VERSION));
+
         /* Compile vertex and fragment shader */
         InputStream isV = null;
         InputStream isF = null;
@@ -372,22 +357,22 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         // float maxDiameterOGL = (float) Math.sqrt(gridSizeOGL[0]*gridSizeOGL[0] + gridSizeOGL[1]*gridSizeOGL[1]);
 
         minEyeZ = maxGridSizeOGL; // maxDiameterOGL / 2.0f + sideLengthOGL;
-        maxEyeZ = maxGridSizeOGL * 3.0f; // maxDiameterOGL * 2.5f;
+        maxEyeZ = maxGridSizeOGL * 10.0f; // maxDiameterOGL * 2.5f;
 
-        eyePos = new float[]{0.0f, 0.0f, maxGridSizeOGL * 3.0f};
+        eyePos = new float[]{0.0f, 0.0f, 20.0f};
         lightPos = new float[]{0.0f, maxGridSizeOGL, maxGridSizeOGL * 3.0f};
 
         // Axes transformations: start reading code from scale, then rotate, then translate
         // axesM @ T
-        Matrix.translateM(axesM, 0,
-                gridSizeVLY[0] / 2.0f - sideLengthOGL / 2.0f,
-                gridSizeVLY[1] / 2.0f - sideLengthOGL / 2.0f,
-                gridSizeVLY[2] / 2.0f - sideLengthOGL / 2.0f
-        );
-        // axesM @ T @ R
-        Matrix.setRotateM(axesM, 0, -90, 1, 0, 0);
-        // axesM @ T @ R @ S
-        Matrix.scaleM(axesM, 0, -sideLengthOGL, sideLengthOGL, sideLengthOGL);
+//        Matrix.translateM(axesM, 0,
+//                gridSizeVLY[0] / 2.0f - sideLengthOGL / 2.0f,
+//                gridSizeVLY[1] / 2.0f - sideLengthOGL / 2.0f,
+//                -(gridSizeVLY[2] / 2.0f - sideLengthOGL / 2.0f)
+//        );
+//        // axesM @ T @ R
+//        Matrix.setRotateM(axesM, 0, 90, 0, 1, 0);
+//        // axesM @ T @ R @ S
+//        Matrix.scaleM(axesM, 0, -sideLengthOGL, -sideLengthOGL, sideLengthOGL);
 
         // Load palette
         Bitmap paletteBitmap = createPaletteBitmap(paletteRaw);
@@ -414,8 +399,9 @@ public class InstancedVoxelRenderer extends BasicRenderer {
             // INSTANCE LEVEL DATA
             glBindBuffer(GL_ARRAY_BUFFER, VBO[2]);
                 glBufferData(GL_ARRAY_BUFFER, Integer.BYTES * voxelsData.capacity(), voxelsData, GL_STATIC_DRAW);
-                glVertexAttribPointer(3, 3, GL_INT, false, 4 * Integer.BYTES, 0 * Integer.BYTES); // translation
-                glVertexAttribPointer(4, 1, GL_INT, false, 4 * Integer.BYTES, 3 * Integer.BYTES); // palette index
+                // Note "AttribIPointer"!!!
+                GLES30.glVertexAttribIPointer(3, 3, GL_INT, 4 * Integer.BYTES, 0 * Integer.BYTES); // translation
+                GLES30.glVertexAttribIPointer(4, 1, GL_INT, 4 * Integer.BYTES, 3 * Integer.BYTES); // palette index
                 glEnableVertexAttribArray(3);
                 glEnableVertexAttribArray(4);
                 GLES30.glVertexAttribDivisor(3, 1); // update the variable at location 3 (translation) each 1 istance
@@ -423,9 +409,7 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         GLES30.glBindVertexArray(0);
 
         // GLOBAL LEVEL DATA
-        MVPloc = glGetUniformLocation(shaderHandle, "MVP");
-        // uModelM = glGetUniformLocation(shaderHandle, "modelMatrix"); // TODO: non serve più, c'è traslation
-        // uInverseModel = glGetUniformLocation(shaderHandle, "inverseModel"); // TODO: come faccio? calcolo l'inversa nello shader?
+        uVP = glGetUniformLocation(shaderHandle, "VP");
         uEyePos = glGetUniformLocation(shaderHandle, "eyePos");
         uLightPos = glGetUniformLocation(shaderHandle, "lightPos");
         uAxesM = glGetUniformLocation(shaderHandle, "axesM");
@@ -479,21 +463,23 @@ public class InstancedVoxelRenderer extends BasicRenderer {
 
         glUseProgram(shaderHandle);
         GLES30.glBindVertexArray(VAO[0]);
-            eyePos[0] = (float) Math.cos(Math.toRadians(angleY));
-            eyePos[1] = (float) Math.sin(Math.toRadians(angleY));
-            eyePos[2] = minEyeZ + (maxEyeZ - minEyeZ) * (maxZoom - zoom) / (maxZoom - minZoom);
+            // TOOD: sistema geometria
+            // eyePos[0] = (float) Math.cos(Math.toRadians(angleY));
+            // eyePos[2] = (float) Math.sin(Math.toRadians(angleY));
+            // eyePos[2] = minEyeZ + (maxEyeZ - minEyeZ) * (maxZoom - zoom) / (maxZoom - minZoom);
+
             glUniform3fv(uEyePos, 1, eyePos, 0);
 
+            Matrix.setIdentityM(VP, 0);
             /* Compute VP part of MVP */
             Matrix.setLookAtM(viewM, 0, eyePos[0], eyePos[1], eyePos[2],
                     0, 0, 0,
                     0, 1, 0);
-            Matrix.multiplyMM(temp, 0, projM, 0, viewM, 0);
+            Matrix.multiplyMM(VP, 0, projM, 0, viewM, 0);
 
-            // TODO: rename, this is only VP
-            glUniformMatrix4fv(MVPloc, 1, false, MVP, 0);
+            glUniformMatrix4fv(uVP, 1, false, VP, 0);
 
-            GLES30.glDrawElementsInstanced(GL_TRIANGLES, countFacesToElement, GL_UNSIGNED_INT, 0, numVoxels);
+            GLES30.glDrawElementsInstanced(drawMode, countFacesToElement, GL_UNSIGNED_INT, 0, numVoxels);
 
         GLES30.glBindVertexArray(0);
         glUseProgram(0);
@@ -570,6 +556,13 @@ public class InstancedVoxelRenderer extends BasicRenderer {
                 "with format " + paletteBitmap.getConfig().name());
 
         return paletteBitmap;
+    }
+
+    public static void LOGERRORS(){
+        int err;
+        while ((err = glGetError()) != GL_NO_ERROR){
+            Log.e(TAG, "[onDrawFrame]: GLERROR " + GLUtils.getEGLErrorString(err));
+        }
     }
 
 }
