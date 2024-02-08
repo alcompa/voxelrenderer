@@ -116,6 +116,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // Nessuna configurazione soddisfa i requisiti
+        Log.w("EGLCONFIG", "No config satisfies DESIRED_DEPTH_SIZE");
         return configs[0];
     }
 }
