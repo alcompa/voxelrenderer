@@ -80,7 +80,7 @@ import androidx.core.view.GestureDetectorCompat;
 public class InstancedVoxelRenderer extends BasicRenderer {
     private static final String VSHAD_FILENAME = "lightinstancedvertex.glslv";
     private static final String FSHAD_FILENAME = "lightinstancedfragment.glslf";
-    private static final String VOXMODEL_FILENAME = "dragon.vly";
+    private static final String VOXMODEL_FILENAME = "christmas.vly";
 
     private int shaderHandle;
     private int[] VAO;
@@ -109,7 +109,7 @@ public class InstancedVoxelRenderer extends BasicRenderer {
 
     private float sideLengthOGL;
     private float[] gridSizeOGL;
-    private float maxGridSizeOGL;
+    private float maxGridSize;
 
     private float angleY; // angle around Y, positive from z to x
     private float slowAngleIncrement;
@@ -349,19 +349,20 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         };
 
         // TODO: make it a local variable
-        maxGridSizeOGL = Math.max(Math.max(gridSizeOGL[0], gridSizeOGL[1]), gridSizeOGL[2]);
-        // max diameter of the object while rotating
-        // float maxDiameterOGL = (float) Math.sqrt(gridSizeOGL[0]*gridSizeOGL[0] + gridSizeOGL[1]*gridSizeOGL[1]);
+        maxGridSize = Math.max(Math.max(gridSizeOGL[0], gridSizeOGL[1]), gridSizeOGL[2]);
+        // object diameter of the object while rotating
+        float objectDiameter = (float) Math.sqrt(gridSizeOGL[0]*gridSizeOGL[0] + gridSizeOGL[2]*gridSizeOGL[2]);
 
         // TODO: find appropriate values
-        minEyeDistance = maxGridSizeOGL; // maxDiameterOGL / 2.0f + sideLengthOGL;
-        maxEyeDistance = maxGridSizeOGL * 5.0f; // maxDiameterOGL * 2.5f;
+        minEyeDistance = objectDiameter / 2.0f + 1.0f; // add 1.0f to avoid touching the object
+        maxEyeDistance = maxGridSize * 3.0f; // keeps in account also object height
 
-        eyePos = new float[]{0.0f, 0.0f, 50.0f};
-        lightPos = new float[]{eyePos[0], eyePos[1], eyePos[2]}; // new float[]{0.0f, maxGridSizeOGL * 2.0f, 0.0f}; // TODO
+        eyePos = new float[]{0.0f, 0.0f, maxGridSize * 2.0f}; // TODO: values are ignored, values are computed again using zoom
+        zoom = (maxZoom - minZoom) / 2.0f;
+        lightPos = new float[]{0.0f, gridSizeOGL[1] * 2.0f, eyePos[2]}; // TODO: tune lightPos[1]
 
-        // Axes transformation: R @ T @
-        // TODO: the model is mirrored wrt to pictures on pdf, but this seems the correct way (see pictures on vox models repo)
+        // Axes transformation: R @ T @ ... @ vertex
+        // The model is mirrored wrt to pictures on pdf, but this seems the correct way (see pictures on vox models repo)
         Matrix.rotateM(axesM, 0, -90, 1, 0, 0);
 
         Matrix.translateM(axesM, 0,
@@ -457,6 +458,7 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         // TODO: move it in callback, so that it is computed only when zoom occurs
         // compute magnitude based on zoom
         float magnitude = minEyeDistance + (maxZoom-minZoom-zoom)/(maxZoom-minZoom) * (maxEyeDistance-minEyeDistance);
+        magnitude = Math.max(minEyeDistance, Math.min(magnitude, maxEyeDistance)); // TODO: check the formula above, this clamping shouldn't be necessary
 
         // Note the +90 shift is needed to start at (0, 0, magnitude)
         // adj = cos(angle) * hyp
@@ -464,7 +466,7 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         // opp = sin(angle) * hyp
          eyePos[2] = (float) Math.sin(Math.toRadians(angleY+90.0f)) * magnitude;
 
-        lightPos[0] = eyePos[0]; lightPos[1] = eyePos[1]; lightPos[2] = eyePos[2]; // TODO: comment if light should stay fixed
+        lightPos[0] = eyePos[0]; lightPos[2] = eyePos[2]; // TODO: comment if light should stay fixed
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texObjId[0]);
