@@ -80,7 +80,7 @@ import androidx.core.view.GestureDetectorCompat;
 public class InstancedVoxelRenderer extends BasicRenderer {
     private static final String VSHAD_FILENAME = "instancedvertex.glslv";
     private static final String FSHAD_FILENAME = "instancedfragment.glslf";
-    private static final String VOXMODEL_FILENAME = "chrk.vly";
+    private static final String VOXMODEL_FILENAME = "dragon.vly";
 
     private int shaderHandle;
     private int[] VAO;
@@ -101,8 +101,8 @@ public class InstancedVoxelRenderer extends BasicRenderer {
 
     private float[] eyePos;
     private int uEyePos;
-    private float minEyeZ; // TODO: rename in eyedist
-    private float maxEyeZ;
+    private float minEyeDistance; // min eye distance from the origin
+    private float maxEyeDistance;
 
     private float[] lightPos;
     private int uLightPos;
@@ -111,7 +111,7 @@ public class InstancedVoxelRenderer extends BasicRenderer {
     private float[] gridSizeOGL;
     private float maxGridSizeOGL;
 
-    private float angleY;
+    private float angleY; // angle around Y, positive from z to x
     private float slowAngleIncrement;
     private float fastAngleIncrement;
 
@@ -142,7 +142,7 @@ public class InstancedVoxelRenderer extends BasicRenderer {
 
         sideLengthOGL = 1.0f; // TODO: make it final
 
-        angleY = 0.0f;
+        angleY = 90.0f;
         slowAngleIncrement = 0.5f; // TODO: cannot be computed now
         fastAngleIncrement = 5.0f; // TODO: cannot be computed now
 
@@ -243,7 +243,7 @@ public class InstancedVoxelRenderer extends BasicRenderer {
 
         Log.v(TAG, "[onSurfaceChanged]: Aspect ratio: " + Float.toString(aspect));
 
-        Matrix.perspectiveM(projM, 0, 45f, aspect, 0.1f, 500f);
+        Matrix.perspectiveM(projM, 0, 45f, aspect, 0.1f, 1000f);
 
         Matrix.setLookAtM(viewM, 0, eyePos[0], eyePos[1], eyePos[2],
                 0, 0, 0,
@@ -352,27 +352,28 @@ public class InstancedVoxelRenderer extends BasicRenderer {
                 gridSizeVLY[1]
         };
 
+        // TODO: make it a local variable
         maxGridSizeOGL = Math.max(Math.max(gridSizeOGL[0], gridSizeOGL[1]), gridSizeOGL[2]);
         // max diameter of the object while rotating
         // float maxDiameterOGL = (float) Math.sqrt(gridSizeOGL[0]*gridSizeOGL[0] + gridSizeOGL[1]*gridSizeOGL[1]);
 
-        minEyeZ = maxGridSizeOGL; // maxDiameterOGL / 2.0f + sideLengthOGL;
-        maxEyeZ = maxGridSizeOGL * 10.0f; // maxDiameterOGL * 2.5f;
+        // TODO: find appropriate values
+        minEyeDistance = maxGridSizeOGL; // maxDiameterOGL / 2.0f + sideLengthOGL;
+        maxEyeDistance = maxGridSizeOGL * 10.0f; // maxDiameterOGL * 2.5f;
 
-        eyePos = new float[]{0.0f, 0.0f, 20.0f};
+        eyePos = new float[]{0.0f, 0.0f, 50.0f};
         lightPos = new float[]{0.0f, maxGridSizeOGL, maxGridSizeOGL * 3.0f};
 
-        // Axes transformations: start reading code from scale, then rotate, then translate
-        // axesM @ T
-//        Matrix.translateM(axesM, 0,
-//                gridSizeVLY[0] / 2.0f - sideLengthOGL / 2.0f,
-//                gridSizeVLY[1] / 2.0f - sideLengthOGL / 2.0f,
-//                -(gridSizeVLY[2] / 2.0f - sideLengthOGL / 2.0f)
-//        );
-//        // axesM @ T @ R
-//        Matrix.setRotateM(axesM, 0, 90, 0, 1, 0);
-//        // axesM @ T @ R @ S
-//        Matrix.scaleM(axesM, 0, -sideLengthOGL, -sideLengthOGL, sideLengthOGL);
+        // Axes transformations: start reading code from translate, then rotate, then scale
+        Matrix.scaleM(axesM, 0, -1, 1, 1);
+
+        Matrix.setRotateM(axesM, 0, -90, 1, 0, 0);
+
+        Matrix.translateM(axesM, 0,
+                -(gridSizeVLY[0] / 2.0f - sideLengthOGL / 2.0f),
+                -(gridSizeVLY[1] / 2.0f - sideLengthOGL / 2.0f),
+                -(gridSizeVLY[2] / 2.0f - sideLengthOGL / 2.0f)
+        );
 
         // Load palette
         Bitmap paletteBitmap = createPaletteBitmap(paletteRaw);
@@ -458,15 +459,19 @@ public class InstancedVoxelRenderer extends BasicRenderer {
     public void onDrawFrame(GL10 gl10) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        // TODO: move it in callback, so that it is computed only when zoom occurs
+        // compute magnitude based on zoom
+        float magnitude = minEyeDistance + (maxZoom-minZoom-zoom)/(maxZoom-minZoom) * (maxEyeDistance-minEyeDistance);
+        // adj = cos(angle) * hyp
+        eyePos[0] = (float) Math.cos(Math.toRadians(angleY)) * magnitude;
+        // opp = sin(angle) * hyp
+        eyePos[2] = (float) Math.sin(Math.toRadians(angleY)) * magnitude;
+
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texObjId[0]);
 
         glUseProgram(shaderHandle);
         GLES30.glBindVertexArray(VAO[0]);
-            // TOOD: sistema geometria
-            // eyePos[0] = (float) Math.cos(Math.toRadians(angleY));
-            // eyePos[2] = (float) Math.sin(Math.toRadians(angleY));
-            // eyePos[2] = minEyeZ + (maxEyeZ - minEyeZ) * (maxZoom - zoom) / (maxZoom - minZoom);
 
             glUniform3fv(uEyePos, 1, eyePos, 0);
 

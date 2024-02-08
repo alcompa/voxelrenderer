@@ -22,5 +22,5 @@ void main(){
 
     vec3 newPos = vPos + vec3(translation);
 
-    gl_Position = VP * vec4(newPos,1);
+    gl_Position = VP * axesM * vec4(newPos,1);
 }
