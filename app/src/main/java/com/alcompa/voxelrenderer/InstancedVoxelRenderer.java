@@ -18,10 +18,12 @@ import android.view.WindowManager;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Array;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.util.Arrays;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
@@ -111,7 +113,7 @@ public class InstancedVoxelRenderer extends BasicRenderer {
     private float[] gridSizeOGL;
     private float maxGridSize;
 
-    private float angleY; // angle around Y, positive from z to x
+    private float angleY; // angle around y, positive from z to x
     private float slowAngleIncrement;
     private float fastAngleIncrement;
 
@@ -146,9 +148,9 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         slowAngleIncrement = 0.5f; // TODO: cannot be computed now
         fastAngleIncrement = 5.0f; // TODO: cannot be computed now
 
-        minZoom = 1.0f; // TODO: check
-        maxZoom = 5.0f; // TODO: check
         zoom = 1.0f;
+        minZoom = 1.0f; // TODO: check
+        maxZoom = 10.0f; // TODO: check
 
         gestureDetected = false;
     }
@@ -457,8 +459,8 @@ public class InstancedVoxelRenderer extends BasicRenderer {
 
         // TODO: move it in callback, so that it is computed only when zoom occurs
         // compute magnitude based on zoom
-        float magnitude = minEyeDistance + (maxZoom-minZoom-zoom)/(maxZoom-minZoom) * (maxEyeDistance-minEyeDistance);
-        magnitude = Math.max(minEyeDistance, Math.min(magnitude, maxEyeDistance)); // TODO: check the formula above, this clamping shouldn't be necessary
+        float magnitude = minEyeDistance + (maxZoom-zoom)/(maxZoom-minZoom) * (maxEyeDistance-minEyeDistance);
+        // magnitude = Math.max(minEyeDistance, Math.min(magnitude, maxEyeDistance)); // TODO: remove, not needed
 
         // Note the +90 shift is needed to start at (0, 0, magnitude)
         // adj = cos(angle) * hyp
