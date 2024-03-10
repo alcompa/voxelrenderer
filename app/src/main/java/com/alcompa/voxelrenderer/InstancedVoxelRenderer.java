@@ -18,12 +18,10 @@ import android.view.WindowManager;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.reflect.Array;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
-import java.util.Arrays;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
@@ -357,11 +355,11 @@ public class InstancedVoxelRenderer extends BasicRenderer {
 
         // TODO: find appropriate values
         minEyeDistance = objectDiameter / 2.0f + 1.0f; // add 1.0f to avoid touching the object
-        maxEyeDistance = maxGridSize * 3.0f; // keeps in account also object height
+        maxEyeDistance = maxGridSize * 4.0f; // keeps in account also object height
 
-        eyePos = new float[]{0.0f, 0.0f, maxGridSize * 2.0f}; // TODO: values are ignored, values are computed again using zoom
+        eyePos = new float[]{0.0f, 0.0f, 0.0f}; // TODO: these are ignored, they are computed again using zoom
         zoom = (maxZoom - minZoom) / 2.0f;
-        lightPos = new float[]{0.0f, gridSizeOGL[1] * 2.0f, eyePos[2]}; // TODO: tune lightPos[1]
+        lightPos = new float[]{0.0f, gridSizeOGL[1] * 2.0f, maxGridSize * 2.0f}; // TODO: tune lightPos[1]
 
         // Axes transformation: R @ T @ ... @ vertex
         // The model is mirrored wrt to pictures on pdf, but this seems the correct way (see pictures on vox models repo)
