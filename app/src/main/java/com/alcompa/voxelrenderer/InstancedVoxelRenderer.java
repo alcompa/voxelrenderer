@@ -34,7 +34,6 @@ import static android.opengl.GLES20.GL_CCW;
 import static android.opengl.GLES20.GL_INT;
 import static android.opengl.GLES20.GL_LINE_LOOP;
 import static android.opengl.GLES20.GL_NEAREST;
-import static android.opengl.GLES20.GL_NO_ERROR;
 import static android.opengl.GLES20.GL_TEXTURE0;
 import static android.opengl.GLES20.GL_TEXTURE_2D;
 import static android.opengl.GLES20.GL_TEXTURE_MAG_FILTER;
@@ -64,7 +63,6 @@ import static android.opengl.GLES20.glEnable;
 import static android.opengl.GLES20.glEnableVertexAttribArray;
 import static android.opengl.GLES20.glGenBuffers;
 import static android.opengl.GLES20.glGenTextures;
-import static android.opengl.GLES20.glGetError;
 import static android.opengl.GLES20.glGetString;
 import static android.opengl.GLES20.glGetUniformLocation;
 import static android.opengl.GLES20.glTexParameteri;
@@ -109,8 +107,6 @@ public class InstancedVoxelRenderer extends BasicRenderer {
     private int uLightPos;
 
     private float sideLengthOGL;
-    private float[] gridSizeOGL;
-    private float maxGridSize;
 
     private float angleY; // angle around y, positive from z to x
     private float slowAngleIncrement;
@@ -143,10 +139,10 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         Matrix.setIdentityM(VP, 0);
         Matrix.setIdentityM(axesM, 0);
 
-        sideLengthOGL = 1.0f; // TODO: make it final
+        sideLengthOGL = 1.0f; // TODO: final
 
         angleY = 0.0f;
-        slowAngleIncrement = 0.5f; // TODO: tune
+        slowAngleIncrement = 1.0f; // TODO: tune
         fastAngleIncrement = 5.0f; // TODO: tune
 
         zoom = 1.0f;
@@ -188,6 +184,9 @@ public class InstancedVoxelRenderer extends BasicRenderer {
                     Log.v(TAG, "[onScroll]: swipe right");
                     angleY += slowAngleIncrement;
                 }
+
+                Log.v(TAG, "[onScroll]: angleY set to " + angleY + " deg");
+
                 return true;
             }
 
@@ -231,6 +230,8 @@ public class InstancedVoxelRenderer extends BasicRenderer {
                             Log.v(TAG, "[onTouch]: Touch right");
                             angleY += fastAngleIncrement;
                         }
+
+                        Log.v(TAG, "[onTouch]: angleY set to " + angleY + " deg");
                     }
                 }
 
@@ -345,22 +346,23 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         // GLOBAL LEVEL DATA
 
         // grid size (with OpenGL axes order)
-        gridSizeOGL = new float[]{
+        // swap axis -2 with -1
+        float[] gridSizeOGL = new float[]{
                 gridSizeVLY[0],
                 gridSizeVLY[2], // swap axis -2 with -1
                 gridSizeVLY[1]
         };
 
-        maxGridSize = Math.max(Math.max(gridSizeOGL[0], gridSizeOGL[1]), gridSizeOGL[2]); // TODO: make it a local variable
+        float maxGridSize = Math.max(Math.max(gridSizeOGL[0], gridSizeOGL[1]), gridSizeOGL[2]);
 
         // diameter of the cylinder built by the object while rotating
-        float objectDiameter = (float) Math.sqrt(gridSizeOGL[0]*gridSizeOGL[0] + gridSizeOGL[2]*gridSizeOGL[2]);
+        float objectDiameter = (float) Math.sqrt(gridSizeOGL[0]* gridSizeOGL[0] + gridSizeOGL[2]* gridSizeOGL[2]);
 
         // TODO: tune
         minEyeDistance = objectDiameter / 2.0f + 1.0f; // add 1.0f to avoid touching the object
         maxEyeDistance = maxGridSize * 4.0f; // keeps in account also object height
 
-        eyePos = new float[]{0.0f, 0.0f, 0.0f}; // TODO: these values are ignored, they are computed again using zoom
+        eyePos = new float[]{0.0f, 0.0f, 0.0f}; // these values are ignored, they are computed again using zoom
         zoom = (maxZoom - minZoom) / 2.0f;
         lightPos = new float[]{0.0f, gridSizeOGL[1] * 2.0f, maxGridSize * 2.0f}; // TODO: tune lightPos[1]
 
@@ -416,7 +418,7 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         /* Pre load uniform values */
         glUseProgram(shaderHandle);
             glUniform3fv(uLightPos, 1, lightPos, 0);
-            glUniform3fv(uEyePos, 1, eyePos, 0); // TODO: useless if you update in onDraw
+            glUniform3fv(uEyePos, 1, eyePos, 0);
             glUniformMatrix4fv(uAxesM, 1, false, axesM, 0);
         glUseProgram(0);
 
@@ -457,10 +459,9 @@ public class InstancedVoxelRenderer extends BasicRenderer {
     public void onDrawFrame(GL10 gl10) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // TODO: move it in callback, so that it is computed only when zoom occurs
         // compute magnitude (distance from origin) based on zoom
         float magnitude = minEyeDistance + (maxZoom-zoom)/(maxZoom-minZoom) * (maxEyeDistance-minEyeDistance);
-        // magnitude = Math.max(minEyeDistance, Math.min(magnitude, maxEyeDistance)); // TODO: replace with an assert
+        // magnitude = Math.max(minEyeDistance, Math.min(magnitude, maxEyeDistance)); // TODO: assert?
 
         // Note the +90 shift is needed to start at (0, 0, magnitude)
         // adj = cos(angle) * hyp
