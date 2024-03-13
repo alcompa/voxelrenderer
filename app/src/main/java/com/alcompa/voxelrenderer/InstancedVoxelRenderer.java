@@ -365,12 +365,12 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         lightPos = new float[]{0.0f, gridSizeOGL[1] * 2.0f, maxGridSize * 2.0f}; // TODO: tune lightPos[1]
 
         // Axes transformation: R @ T @ ... @ vertex
-        Matrix.rotateM(axesM, 0, -90, 1, 0, 0);
+        Matrix.rotateM(axesM, 0, 90, 1, 0, 0);
 
         Matrix.translateM(axesM, 0,
-                -(gridSizeVLY[0] / 2.0f - sideLengthOGL / 2.0f),
-                -(gridSizeVLY[1] / 2.0f - sideLengthOGL / 2.0f),
-                -(gridSizeVLY[2] / 2.0f - sideLengthOGL / 2.0f)
+                +(gridSizeVLY[0] / 2.0f - sideLengthOGL / 2.0f),
+                +(gridSizeVLY[1] / 2.0f - sideLengthOGL / 2.0f),
+                +(gridSizeVLY[2] / 2.0f - sideLengthOGL / 2.0f)
         );
 
         // Load palette
@@ -468,7 +468,9 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         // opp = sin(angle) * hyp
         eyePos[2] = (float) Math.sin(Math.toRadians(angleY+90.0f)) * magnitude;
 
-        lightPos[0] = eyePos[0]; lightPos[2] = eyePos[2]; // TODO: comment if light should stay fixed
+        // comment these 2 lines if you want to keep lightPos fixed
+        lightPos[0] = eyePos[0];
+        lightPos[2] = eyePos[2];
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texObjId[0]);
@@ -477,7 +479,7 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         GLES30.glBindVertexArray(VAO[0]);
 
             glUniform3fv(uEyePos, 1, eyePos, 0);
-            glUniform3fv(uLightPos, 1, lightPos, 0); // TODO: comment if light should stay fixed
+            glUniform3fv(uLightPos, 1, lightPos, 0); // comment if you want to keep lightPos fixed
 
             Matrix.setIdentityM(VP, 0);
             /* Compute VP part of MVP */

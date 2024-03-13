@@ -23,7 +23,7 @@ void main(){
     varyingColor = texelFetch(tex, texCoord, 0); // lod=0 since no mipmaps are used
 
     mat4 translM = mat4(1);
-    translM[3] = vec4(vec3(translation), 1); // set the 4th col to translation
+    translM[3] = vec4(vec3(-translation), 1); // set the 4th col to translation
 
     mat4 modelM = axesM * translM;
 
