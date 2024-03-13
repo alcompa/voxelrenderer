@@ -59,8 +59,6 @@ public class VlyObject {
         Pattern pattern;
         Matcher matcher;
 
-        // Iterator<String> it = reader.lines().iterator();
-
         s = reader.readLine();
         pattern = Pattern.compile("^grid_size: [0-9]+ [0-9]+ [0-9]+");
         matcher = pattern.matcher(s);
@@ -76,7 +74,7 @@ public class VlyObject {
         gridSize[2] = Integer.parseInt(tokens[2].trim());
 
         s = reader.readLine();
-        pattern = Pattern.compile("^voxel_num: [0-9]+"); // TODO: overkill
+        pattern = Pattern.compile("^voxel_num: [0-9]+");
         matcher = pattern.matcher(s);
 
         if (!matcher.find()) {

@@ -146,12 +146,12 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         sideLengthOGL = 1.0f; // TODO: make it final
 
         angleY = 0.0f;
-        slowAngleIncrement = 0.5f; // TODO: cannot be computed now
-        fastAngleIncrement = 5.0f; // TODO: cannot be computed now
+        slowAngleIncrement = 0.5f; // TODO: tune
+        fastAngleIncrement = 5.0f; // TODO: tune
 
         zoom = 1.0f;
-        minZoom = 1.0f; // TODO: check
-        maxZoom = 10.0f; // TODO: check
+        minZoom = 1.0f; // TODO: tune
+        maxZoom = 10.0f; // TODO: tune
 
         gestureDetected = false;
     }
@@ -332,7 +332,7 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         indexData.put(indices);
         indexData.position(0);
 
-        countFacesToElement = indices.length; // TODO: Why faces == indices.length?
+        countFacesToElement = indices.length;
 
         // INSTANCE LEVEL DATA
         IntBuffer voxelsData =
@@ -351,21 +351,20 @@ public class InstancedVoxelRenderer extends BasicRenderer {
                 gridSizeVLY[1]
         };
 
-        // TODO: make it a local variable
-        maxGridSize = Math.max(Math.max(gridSizeOGL[0], gridSizeOGL[1]), gridSizeOGL[2]);
-        // object diameter of the object while rotating
+        maxGridSize = Math.max(Math.max(gridSizeOGL[0], gridSizeOGL[1]), gridSizeOGL[2]); // TODO: make it a local variable
+
+        // diameter of the cylinder built by the object while rotating
         float objectDiameter = (float) Math.sqrt(gridSizeOGL[0]*gridSizeOGL[0] + gridSizeOGL[2]*gridSizeOGL[2]);
 
-        // TODO: find appropriate values
+        // TODO: tune
         minEyeDistance = objectDiameter / 2.0f + 1.0f; // add 1.0f to avoid touching the object
         maxEyeDistance = maxGridSize * 4.0f; // keeps in account also object height
 
-        eyePos = new float[]{0.0f, 0.0f, 0.0f}; // TODO: these are ignored, they are computed again using zoom
+        eyePos = new float[]{0.0f, 0.0f, 0.0f}; // TODO: these values are ignored, they are computed again using zoom
         zoom = (maxZoom - minZoom) / 2.0f;
         lightPos = new float[]{0.0f, gridSizeOGL[1] * 2.0f, maxGridSize * 2.0f}; // TODO: tune lightPos[1]
 
         // Axes transformation: R @ T @ ... @ vertex
-        // The model is mirrored wrt to pictures on pdf, but this seems the correct way (see pictures on vox models repo)
         Matrix.rotateM(axesM, 0, -90, 1, 0, 0);
 
         Matrix.translateM(axesM, 0,
@@ -459,15 +458,15 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // TODO: move it in callback, so that it is computed only when zoom occurs
-        // compute magnitude based on zoom
+        // compute magnitude (distance from origin) based on zoom
         float magnitude = minEyeDistance + (maxZoom-zoom)/(maxZoom-minZoom) * (maxEyeDistance-minEyeDistance);
         // magnitude = Math.max(minEyeDistance, Math.min(magnitude, maxEyeDistance)); // TODO: replace with an assert
 
         // Note the +90 shift is needed to start at (0, 0, magnitude)
         // adj = cos(angle) * hyp
-         eyePos[0] = (float) Math.cos(Math.toRadians(angleY+90.0f)) * magnitude;
+        eyePos[0] = (float) Math.cos(Math.toRadians(angleY+90.0f)) * magnitude;
         // opp = sin(angle) * hyp
-         eyePos[2] = (float) Math.sin(Math.toRadians(angleY+90.0f)) * magnitude;
+        eyePos[2] = (float) Math.sin(Math.toRadians(angleY+90.0f)) * magnitude;
 
         lightPos[0] = eyePos[0]; lightPos[2] = eyePos[2]; // TODO: comment if light should stay fixed
 
@@ -501,7 +500,7 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         /* Create a bitmap from palette data */
 
         int numColors = paletteRaw.length / 3;
-        int y = (int) Math.ceil(Math.log(numColors) / Math.log(2) / 2.0); // TODO: add explanation
+        int y = (int) Math.ceil(Math.log(numColors) / Math.log(2) / 2.0);
         // int paletteBitmapSide = (int) Math.pow(2, y);
         int paletteBitmapSide = 1 << y;
 
@@ -514,19 +513,12 @@ public class InstancedVoxelRenderer extends BasicRenderer {
             );
         }
 
-        Bitmap paletteBitmap = Bitmap.createBitmap(encodedColors, paletteBitmapSide, paletteBitmapSide, Bitmap.Config.ARGB_8888); // TODO: try RGB565
+        Bitmap paletteBitmap = Bitmap.createBitmap(encodedColors, paletteBitmapSide, paletteBitmapSide, Bitmap.Config.ARGB_8888); // TODO: try also RGB565
 
         Log.v(TAG, "[createPaletteBitmap]: bitmap of size " + paletteBitmap.getWidth() + "x" + paletteBitmap.getHeight() + " loaded " +
                 "with format " + paletteBitmap.getConfig().name());
 
         return paletteBitmap;
-    }
-
-    public static void LOGERRORS(){
-        int err;
-        while ((err = glGetError()) != GL_NO_ERROR){
-            Log.e(TAG, "[onDrawFrame]: GLERROR " + GLUtils.getEGLErrorString(err));
-        }
     }
 
 }
