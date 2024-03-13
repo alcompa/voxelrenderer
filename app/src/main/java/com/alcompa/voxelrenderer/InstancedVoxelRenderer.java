@@ -80,7 +80,8 @@ import androidx.core.view.GestureDetectorCompat;
 public class InstancedVoxelRenderer extends BasicRenderer {
     private static final String VSHAD_FILENAME = "lightinstancedvertex.glslv";
     private static final String FSHAD_FILENAME = "lightinstancedfragment.glslf";
-    private static final String VOXMODEL_FILENAME = "christmas.vly";
+
+    private String modelFilename;
 
     private int shaderHandle;
     private int[] VAO;
@@ -125,8 +126,10 @@ public class InstancedVoxelRenderer extends BasicRenderer {
     private GestureDetectorCompat gestureDetector;
     private boolean gestureDetected;
 
-    public InstancedVoxelRenderer() {
+    public InstancedVoxelRenderer(String modelFilename) {
         super(0, 0, 0);
+
+        this.modelFilename = modelFilename;
 
         drawMode = GL_TRIANGLES;
 
@@ -295,7 +298,7 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         int[] paletteRaw = null;
 
         try {
-            is = context.getAssets().open(VOXMODEL_FILENAME);
+            is = context.getAssets().open(modelFilename);
             VlyObject vo = new VlyObject(is);
             vo.parse();
 
@@ -458,7 +461,7 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         // TODO: move it in callback, so that it is computed only when zoom occurs
         // compute magnitude based on zoom
         float magnitude = minEyeDistance + (maxZoom-zoom)/(maxZoom-minZoom) * (maxEyeDistance-minEyeDistance);
-        // magnitude = Math.max(minEyeDistance, Math.min(magnitude, maxEyeDistance)); // TODO: remove, not needed
+        // magnitude = Math.max(minEyeDistance, Math.min(magnitude, maxEyeDistance)); // TODO: replace with an assert
 
         // Note the +90 shift is needed to start at (0, 0, magnitude)
         // adj = cos(angle) * hyp

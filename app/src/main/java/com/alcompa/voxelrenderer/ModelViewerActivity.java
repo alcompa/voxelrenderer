@@ -16,15 +16,24 @@ import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.egl.EGLContext;
 import javax.microedition.khronos.egl.EGLDisplay;
 
-public class MainActivity extends AppCompatActivity {
+/* Adapted from mobile programming course samples (https://git.hipert.unimore.it/ncapodieci/mobileprogramming/) */
+public class ModelViewerActivity extends AppCompatActivity {
     public static final int DESIRED_DEPTH_SIZE = 24;
 
     private GLSurfaceView surface;
     private boolean isSurfaceCreated;
+    private String modelFilename;
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) { // TODO: fix reset on tilt!
+    protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        if(savedInstanceState==null && getIntent().getExtras()==null) {
+            modelFilename = "chrk.vly";
+        }else if (savedInstanceState!=null)
+            modelFilename = savedInstanceState.getString("modelFilename");
+        else
+            modelFilename = getIntent().getExtras().getString("modelFilename");
 
         //Optional for full screen
         requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -62,7 +71,7 @@ public class MainActivity extends AppCompatActivity {
 
         // GLSurfaceView.Renderer renderer = new BasicRenderer(0.45f,0.32f,0.13f);
         // GLSurfaceView.Renderer renderer = new NaiveVoxelRenderer();
-        GLSurfaceView.Renderer renderer = new InstancedVoxelRenderer();
+        GLSurfaceView.Renderer renderer = new InstancedVoxelRenderer(modelFilename);
 
         setContentView(surface);
         ((BasicRenderer) renderer).setContextAndSurface(this,surface);
@@ -118,5 +127,11 @@ public class MainActivity extends AppCompatActivity {
         // Nessuna configurazione soddisfa i requisiti
         Log.w("EGLCONFIG", "No config satisfies DESIRED_DEPTH_SIZE");
         return configs[0];
+    }
+
+    @Override
+    public void onSaveInstanceState(Bundle b) {
+        super.onSaveInstanceState(b);
+        b.putString("modelFilename", modelFilename);
     }
 }
