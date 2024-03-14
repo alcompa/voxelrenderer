@@ -139,7 +139,7 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         Matrix.setIdentityM(VP, 0);
         Matrix.setIdentityM(axesM, 0);
 
-        sideLengthOGL = 1.0f; // TODO: final
+        sideLengthOGL = 1.0f;
 
         angleY = 0.0f;
         slowAngleIncrement = 1.0f; // TODO: tune
@@ -461,7 +461,7 @@ public class InstancedVoxelRenderer extends BasicRenderer {
 
         // compute magnitude (distance from origin) based on zoom
         float magnitude = minEyeDistance + (maxZoom-zoom)/(maxZoom-minZoom) * (maxEyeDistance-minEyeDistance);
-        // magnitude = Math.max(minEyeDistance, Math.min(magnitude, maxEyeDistance)); // TODO: assert?
+        // magnitude = Math.max(minEyeDistance, Math.min(magnitude, maxEyeDistance));
 
         // Note the +90 shift is needed to start at (0, 0, magnitude)
         // adj = cos(angle) * hyp
