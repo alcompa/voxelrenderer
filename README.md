@@ -15,11 +15,11 @@ A simple voxel renderer app in Java and OpenGL ES
 See [DOCS.md](docs/DOCS.md)
 
 ## Demo
-![chrk](docs/chrk.webm)
-![dragon](docs/dragon.webm)
-![monu2](docs/monu2.webm)
-![monu16](docs/monu16.webm)
-![christmas](docs/christmas.webm)
+<img src="docs/chrk.gif" width="200"></img>
+<img src="docs/dragon.gif" width="200"></img>
+<img src="docs/monu2.gif" width="200"></img>
+<img src="docs/monu16.gif" width="200"></img>
+<img src="docs/christmas.gif" width="200"></img>
 
 ## Acknowledgments
 https://git.hipert.unimore.it/ncapodieci/mobileprogramming/ for `ShaderCompiler.java`, `PlyObject.java`, `BasicRenderer.java` and the `.vly` models.
