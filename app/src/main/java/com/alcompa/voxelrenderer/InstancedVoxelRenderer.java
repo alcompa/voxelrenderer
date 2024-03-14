@@ -122,10 +122,12 @@ public class InstancedVoxelRenderer extends BasicRenderer {
     private GestureDetectorCompat gestureDetector;
     private boolean gestureDetected;
 
-    public InstancedVoxelRenderer(String modelFilename) {
+    public InstancedVoxelRenderer(String modelFilename, float angleY, float zoom) {
         super(0, 0, 0);
 
         this.modelFilename = modelFilename;
+        this.angleY = angleY;
+        this.zoom = zoom;
 
         drawMode = GL_TRIANGLES;
 
@@ -141,11 +143,9 @@ public class InstancedVoxelRenderer extends BasicRenderer {
 
         sideLengthOGL = 1.0f;
 
-        angleY = 0.0f;
         slowAngleIncrement = 1.0f; // TODO: tune
         fastAngleIncrement = 5.0f; // TODO: tune
 
-        zoom = 1.0f;
         minZoom = 1.0f; // TODO: tune
         maxZoom = 10.0f; // TODO: tune
 
@@ -359,11 +359,11 @@ public class InstancedVoxelRenderer extends BasicRenderer {
         float objectDiameter = (float) Math.sqrt(gridSizeOGL[0]* gridSizeOGL[0] + gridSizeOGL[2]* gridSizeOGL[2]);
 
         // TODO: tune
-        minEyeDistance = objectDiameter / 2.0f + 1.0f; // add 1.0f to avoid touching the object
+        minEyeDistance = objectDiameter / 2.0f + 3.0f; // add 3.0f to avoid touching the object
         maxEyeDistance = maxGridSize * 4.0f; // keeps in account also object height
 
         eyePos = new float[]{0.0f, 0.0f, 0.0f}; // these values are ignored, they are computed again using zoom
-        zoom = (maxZoom - minZoom) / 2.0f;
+        // zoom = (maxZoom - minZoom) / 2.0f;
         lightPos = new float[]{0.0f, gridSizeOGL[1] * 2.0f, maxGridSize * 2.0f}; // TODO: tune lightPos[1]
 
         // Axes transformation: R @ T @ ... @ vertex
@@ -522,6 +522,14 @@ public class InstancedVoxelRenderer extends BasicRenderer {
                 "with format " + paletteBitmap.getConfig().name());
 
         return paletteBitmap;
+    }
+
+    public float getAngleY(){
+        return angleY;
+    }
+
+    public float getZoom(){
+        return zoom;
     }
 
 }

@@ -22,18 +22,25 @@ public class ModelViewerActivity extends AppCompatActivity {
 
     private GLSurfaceView surface;
     private boolean isSurfaceCreated;
+    private GLSurfaceView.Renderer renderer;
     private String modelFilename;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        if(savedInstanceState==null && getIntent().getExtras()==null) {
+        float angleY = 0.0f;
+        float zoom = 4.5f;
+
+        if (savedInstanceState == null && getIntent().getExtras() == null) {
             modelFilename = "chrk.vly";
-        }else if (savedInstanceState!=null)
+        } else if (savedInstanceState != null){
             modelFilename = savedInstanceState.getString("modelFilename");
-        else
+            angleY = savedInstanceState.getFloat("angleY");
+            zoom = savedInstanceState.getFloat("zoom");
+        }else {
             modelFilename = getIntent().getExtras().getString("modelFilename");
+        }
 
         //Optional for full screen
         requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -71,7 +78,7 @@ public class ModelViewerActivity extends AppCompatActivity {
 
         // GLSurfaceView.Renderer renderer = new BasicRenderer(0.45f,0.32f,0.13f);
         // GLSurfaceView.Renderer renderer = new NaiveVoxelRenderer();
-        GLSurfaceView.Renderer renderer = new InstancedVoxelRenderer(modelFilename);
+        renderer = new InstancedVoxelRenderer(modelFilename, angleY, zoom);
 
         setContentView(surface);
         ((BasicRenderer) renderer).setContextAndSurface(this,surface);
@@ -133,5 +140,7 @@ public class ModelViewerActivity extends AppCompatActivity {
     public void onSaveInstanceState(Bundle b) {
         super.onSaveInstanceState(b);
         b.putString("modelFilename", modelFilename);
+        b.putFloat("angleY", ((InstancedVoxelRenderer) renderer).getAngleY());
+        b.putFloat("zoom", ((InstancedVoxelRenderer) renderer).getZoom());
     }
 }
