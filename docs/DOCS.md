@@ -39,7 +39,7 @@ Permette di ottenere:
 - `gridSize`: dimensioni dell'occupancy grid
 - `voxelNum`: numero di voxel presenti
 - `voxelsRaw`: array contenente $X_i, Y_i, Z_i, C_i, X_{i+1}, Y_{i+1}, Z_{i+1}, C_{i+1}, ...$
-- `paletteRaw`: array contenente la palette dei colori, $R_0, G_0, B_0, R_1, G_1, B_1$. Il colore corrispondente al palette index $C_i$ si trova in `paletteRaw[i*3 + 0], paletteRaw[i*3 + 1], paletteRaw[i*3 + 2]` 
+- `paletteRaw`: array contenente la palette dei colori, $R_0, G_0, B_0, R_1, G_1, B_1, ...$. Il colore corrispondente al palette index $C_i$ si trova in `paletteRaw[i*3 + 0], paletteRaw[i*3 + 1], paletteRaw[i*3 + 2]` 
 
 ***
 
